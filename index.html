@@ -43,6 +43,7 @@
 
     body {
       min-height: 100vh;
+      min-height: 100svh;
       min-height: 100dvh;
       overflow-x: hidden;
     }
@@ -56,6 +57,7 @@
         linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
       background-size: 38px 38px;
+      -webkit-mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,.45) 54%, transparent 100%);
       mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,.45) 54%, transparent 100%);
     }
 
@@ -104,6 +106,7 @@
       z-index: 1;
       width: 100%;
       min-height: 100vh;
+      min-height: 100svh;
       min-height: 100dvh;
       display: flex;
       align-items: center;
@@ -164,7 +167,7 @@
       margin: 0;
       font-size: 22px;
       letter-spacing: .02em;
-      font-weight: 760;
+      font-weight: 700;
     }
 
     .intro p {
@@ -179,7 +182,7 @@
       margin: 0 0 9px 4px;
       font-size: 13px;
       color: #c8cee2;
-      font-weight: 650;
+      font-weight: 600;
     }
 
     .input-wrap {
@@ -208,7 +211,7 @@
       background: rgba(6, 8, 20, .88);
       color: var(--text);
       font-size: 18px;
-      font-weight: 680;
+      font-weight: 700;
       letter-spacing: .06em;
       caret-color: var(--cyan);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
@@ -238,7 +241,7 @@
       border-radius: 17px;
       color: white;
       font-size: 16px;
-      font-weight: 750;
+      font-weight: 700;
       cursor: pointer;
       overflow: hidden;
       background:
@@ -303,14 +306,17 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
       margin-bottom: 10px;
+    }
+
+    .progress-head > * + * {
+      margin-left: 12px;
     }
 
     .progress-title {
       font-size: 14px;
       color: #e7eaff;
-      font-weight: 680;
+      font-weight: 700;
     }
 
     .progress-value {
@@ -378,10 +384,13 @@
       flex: 0 0 28px;
       width: 28px;
       height: 28px;
-      display: grid;
-      place-items: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
       font-size: 15px;
       font-weight: 800;
+      overflow: hidden;
     }
 
     .step-icon.pending {
@@ -390,7 +399,21 @@
 
     .step-icon.running {
       color: var(--cyan);
-      animation: spin 1s linear infinite;
+      font-size: 0;
+      animation: none;
+    }
+
+    .step-icon.running::before {
+      content: "";
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(85, 217, 255, .22);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      display: block;
+      margin: 0;
+      animation: spin 0.8s linear infinite;
+      transform-origin: 50% 50%;
     }
 
     .step-icon.success {
@@ -406,6 +429,7 @@
     }
 
     @keyframes spin {
+      from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
 
@@ -439,9 +463,12 @@
     .result-state {
       display: flex;
       align-items: center;
-      gap: 10px;
       font-size: 18px;
-      font-weight: 760;
+      font-weight: 700;
+    }
+
+    .result-state > * + * {
+      margin-left: 10px;
     }
 
     .result-state.normal {
@@ -479,7 +506,7 @@
     .report-id {
       margin-top: 6px;
       font-size: 15px;
-      font-weight: 720;
+      font-weight: 700;
       color: #edf0ff;
       letter-spacing: .06em;
       word-break: break-all;
@@ -489,9 +516,12 @@
       margin-top: 9px;
       display: flex;
       align-items: center;
-      gap: 8px;
       font-size: 12px;
       color: #aab3cb;
+    }
+
+    .submit-status > * + * {
+      margin-left: 8px;
     }
 
     .submit-status.ok {
@@ -931,6 +961,10 @@
     }
 
     async function fetchWithTimeout(url, options = {}, timeout = REQUEST_TIMEOUT) {
+      if (typeof AbortController === 'undefined') {
+        return fetch(url, options);
+      }
+
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
 
@@ -1117,8 +1151,13 @@
       const result = {};
 
       tasks.forEach((task, index) => {
-        result[task.domain] ||= {};
-        result[task.domain][task.resolver] ||= {};
+        if (!result[task.domain]) {
+          result[task.domain] = {};
+        }
+
+        if (!result[task.domain][task.resolver]) {
+          result[task.domain][task.resolver] = {};
+        }
         result[task.domain][task.resolver][task.type] = values[index];
       });
 
