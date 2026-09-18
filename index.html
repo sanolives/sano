@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#f5f7fa">
+<title>网络诊断</title>
+<style>
+:root{
+  --bg:#f5f7fa;--card:#fff;--text:#172033;--muted:#667085;--line:#e4e7ec;
+  --ok:#15803d;--okbg:#eaf7ee;--warn:#b25e09;--warnbg:#fff4df;
+  --bad:#c62828;--badbg:#ffebeb;--info:#175cd3;--infobg:#eef4ff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Arial,sans-serif;
+}
+.wrap{
+  width:100%;max-width:860px;margin:0 auto;
+  padding:max(14px,env(safe-area-inset-top)) 12px max(28px,env(safe-area-inset-bottom));
+}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:16px;margin-bottom:12px;box-shadow:0 3px 14px rgba(16,24,40,.05)
+}
+.hero{padding:18px 16px}
+h1{font-size:22px;line-height:1.3;margin:0 0 8px}
+h2{font-size:17px;line-height:1.35;margin:0 0 12px}
+p{margin:0}
+.muted{color:var(--muted);font-size:13px;line-height:1.65}
+.notice{
+  margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--infobg);
+  color:#344054;font-size:13px;line-height:1.6
+}
+.toolbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.toolbar .primary{grid-column:1/-1}
+button{
+  min-height:48px;border:0;border-radius:12px;padding:12px 14px;
+  font-size:15px;font-weight:700;cursor:pointer
+}
+button.primary{background:var(--info);color:#fff}
+button.secondary{background:#eef2f6;color:var(--text)}
+button:disabled{opacity:.52;cursor:not-allowed}
+.progress{height:8px;border-radius:999px;background:#e8ecf1;overflow:hidden;margin-top:13px}
+.progress>div{height:100%;width:0;background:var(--info);transition:width .22s ease}
+.status-text{margin-top:8px;min-height:20px}
+
+.summary-grid{display:grid;grid-template-columns:1fr;gap:9px}
+.diag{
+  border:1px solid var(--line);border-radius:12px;padding:12px;
+  display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start
+}
+.diag-title{font-weight:700;font-size:14px;margin-bottom:4px}
+.diag-detail{font-size:12px;color:var(--muted);line-height:1.55}
+.pill{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:46px;height:24px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap
+}
+.pill.ok{color:var(--ok);background:var(--okbg)}
+.pill.warn{color:var(--warn);background:var(--warnbg)}
+.pill.bad{color:var(--bad);background:var(--badbg)}
+.pill.info{color:var(--info);background:var(--infobg)}
+
+.domain-card{border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px}
+.domain-head{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.domain-name{font-size:18px;font-weight:800}
+.domain-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.metric{border:1px solid var(--line);border-radius:10px;padding:10px;min-height:66px}
+.metric .k{font-size:11px;color:var(--muted);margin-bottom:5px}
+.metric .v{font-size:14px;font-weight:700;word-break:break-word}
+.attempts{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+.attempt{
+  border-radius:999px;padding:5px 9px;font-size:11px;font-weight:700;
+  background:#eef2f6;color:#475467
+}
+.attempt.ok{background:var(--okbg);color:var(--ok)}
+.attempt.bad{background:var(--badbg);color:var(--bad)}
+
+.env-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.env-item{border:1px solid var(--line);border-radius:10px;padding:10px}
+.env-k{font-size:11px;color:var(--muted)}
+.env-v{font-size:13px;margin-top:4px;word-break:break-word}
+
+pre{
+  white-space:pre-wrap;word-break:break-word;background:#111827;color:#e5e7eb;
+  padding:13px;border-radius:10px;font-size:11px;line-height:1.55;max-height:420px;overflow:auto
+}
+#canvasHolder canvas{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:10px}
+
+@media (min-width:640px){
+  .wrap{padding-left:18px;padding-right:18px}
+  .summary-grid{grid-template-columns:1fr 1fr}
+  .domain-meta{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .env-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .toolbar{display:flex}
+  .toolbar .primary{grid-column:auto}
+  button{min-width:130px}
+}
+@media (max-width:360px){
+  .domain-meta,.env-grid{grid-template-columns:1fr}
+  .card{padding:14px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section class="card hero">
+    <h1>网络与域名诊断</h1>
+    <p class="muted">检测当前手机网络下的域名解析与 HTTPS 可达性。不会上传结果，不展示域名和 IP。</p>
+    <div class="notice">
+      检测会进行外网对照、3 次连续连接、双公共 DNS 对照、IPv4/IPv6 记录检查，并针对运营商 DNS、DNS 污染/劫持、TLS/SNI、CDN/网络路由给出排查提示。
+    </div>
+
+    <div class="toolbar">
+      <button id="startBtn" class="primary">开始全面检测</button>
+      <button id="copyBtn" class="secondary" disabled>复制报告</button>
+      <button id="imageBtn" class="secondary" disabled>生成截图报告</button>
+    </div>
+
+    <div class="progress"><div id="bar"></div></div>
+    <div id="status" class="muted status-text">等待开始</div>
+  </section>
+
+  <section class="card">
+    <h2>重点排查</h2>
+    <div id="diagnosis" class="summary-grid">
+      <div class="muted">完成检测后显示。</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>域名检测结果</h2>
+    <div id="domainResults" class="muted">尚未检测</div>
+    <div class="notice">
+      “IPv4 / IPv6”表示域名是否存在相应 DNS 记录，不代表当前手机一定能通过该协议连接。
+      纯网页无法强制目标域名分别只走 IPv4 或 IPv6。
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>网络环境</h2>
+    <div id="environment" class="env-grid"></div>
+  </section>
+
+  <section class="card">
+    <h2>完整报告</h2>
+    <pre id="report">尚未检测</pre>
+  </section>
+
+  <section class="card" id="canvasCard" hidden>
+    <h2>截图报告</h2>
+    <div id="canvasHolder"></div>
+  </section>
+</div>
+
+<script>
+/*
+ * 真实域名仅在代码内部作为检测目标。
+ * 页面、复制报告、截图均只显示 sano / fofun。
+ */
+const TARGETS = [
+  { code: "sano",  host: ["api","sanolive","net"].join(".") },
+  { code: "fofun", host: ["api","fofunlive","net"].join(".") }
+];
+
+const SETTINGS = {
+  attempts: 3,
+  timeoutMs: 6500,
+  pauseBetweenAttemptsMs: 300
+};
+
+const $ = s => document.querySelector(s);
+const startBtn=$("#startBtn"), copyBtn=$("#copyBtn"), imageBtn=$("#imageBtn");
+const bar=$("#bar"), statusEl=$("#status"), reportEl=$("#report");
+const diagnosisEl=$("#diagnosis"), domainResultsEl=$("#domainResults"), environmentEl=$("#environment");
+
+let lastData=null,lastReport="";
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
+function timeoutController(ms){
+  const c=new AbortController();
+  const t=setTimeout(()=>c.abort(),ms);
+  return {signal:c.signal,done:()=>clearTimeout(t)};
+}
+function networkInfo(){
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||null;
+  return {
+    time:new Date().toLocaleString(),
+    timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"-",
+    browserOnline:navigator.onLine,
+    language:navigator.language||"-",
+    networkType:c?.type||"-",
+    effectiveType:c?.effectiveType||"-",
+    estimatedRtt:Number.isFinite(c?.rtt)?`${c.rtt} ms`:"-",
+    estimatedDownlink:Number.isFinite(c?.downlink)?`${c.downlink} Mbps`:"-",
+    userAgent:navigator.userAgent
+  };
+}
+function setProgress(done,total,text){
+  bar.style.width=`${Math.max(0,Math.min(100,Math.round(done/Math.max(1,total)*100)))}%`;
+  statusEl.textContent=text;
+}
+function pill(level){
+  const map={ok:["正常","ok"],warn:["可疑","warn"],bad:["异常","bad"],info:["参考","info"]};
+  const [text,cls]=map[level]||map.info;
+  return `<span class="pill ${cls}">${text}</span>`;
+}
+function median(arr){
+  const a=[...arr].sort((x,y)=>x-y);
+  if(!a.length)return null;
+  const m=Math.floor(a.length/2);
+  return a.length%2?a[m]:(a[m-1]+a[m])/2;
+}
+function stats(attempts){
+  const ok=attempts.filter(x=>x.ok);
+  const durations=ok.map(x=>x.duration);
+  return {
+    success:ok.length,
+    total:attempts.length,
+    successRate:attempts.length?ok.length/attempts.length:0,
+    avgMs:durations.length?durations.reduce((a,b)=>a+b,0)/durations.length:null,
+    medianMs:median(durations),
+    maxMs:durations.length?Math.max(...durations):null,
+    minMs:durations.length?Math.min(...durations):null
+  };
+}
+
+/* 外网对照：只判断用户当前浏览器整体网络是否能发出 HTTPS 请求 */
+async function controlRequest(url){
+  const c=timeoutController(SETTINGS.timeoutMs);
+  const begin=performance.now();
+  try{
+    await fetch(url+(url.includes("?")?"&":"?")+"d="+Date.now()+Math.random(),{
+      mode:"no-cors",cache:"no-store",credentials:"omit",signal:c.signal
+    });
+    return {ok:true,duration:performance.now()-begin};
+  }catch(e){
+    return {ok:false,duration:performance.now()-begin,error:e?.name==="AbortError"?"TIMEOUT":"NETWORK_ERROR"};
+  }finally{c.done()}
+}
+
+async function checkInternetControls(){
+  const urls=[
+    "https://www.cloudflare.com/favicon.ico",
+    "https://github.com/favicon.ico"
+  ];
+  const values=await Promise.all(urls.map(controlRequest));
+  return {
+    success:values.filter(x=>x.ok).length,
+    total:values.length,
+    details:values.map(x=>({ok:x.ok,durationMs:Math.round(x.duration),error:x.error||""}))
+  };
+}
+
+/*
+ * 本机网络域名连接：
+ * 不读取 HTTP 状态、不依赖业务接口。
+ * no-cors 请求成功 = 浏览器至少完成了 DNS + TCP + TLS + HTTP 请求链路。
+ */
+async function nativeAttempt(host){
+  const c=timeoutController(SETTINGS.timeoutMs);
+  const begin=performance.now();
+  const url=`https://${host}/?__nd=${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  try{
+    await fetch(url,{
+      mode:"no-cors",
+      method:"GET",
+      cache:"no-store",
+      credentials:"omit",
+      redirect:"follow",
+      signal:c.signal
+    });
+    return {ok:true,duration:performance.now()-begin,error:""};
+  }catch(e){
+    return {
+      ok:false,
+      duration:performance.now()-begin,
+      error:e?.name==="AbortError"?"TIMEOUT":"NETWORK_ERROR"
+    };
+  }finally{c.done()}
+}
+
+/*
+ * 公共 DNS 对照。
+ * 代码只保留“是否有记录 / 两个解析器结果是否一致”。
+ * 不把 IP 写入 UI、报告或截图。
+ */
+async function queryResolver(provider,host,type){
+  let url,headers={};
+  if(provider==="cf"){
+    url=`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`;
+    headers={"Accept":"application/dns-json"};
+  }else{
+    url=`https://dns.google/resolve?name=${encodeURIComponent(host)}&type=${type}`;
+  }
+
+  const c=timeoutController(SETTINGS.timeoutMs);
+  try{
+    const r=await fetch(url,{method:"GET",cache:"no-store",credentials:"omit",headers,signal:c.signal});
+    if(!r.ok)return {queryOk:false,httpStatus:r.status,hasRecord:false,status:null,ad:false,values:[]};
+    const d=await r.json();
+    const wanted=type==="A"?1:28;
+    const values=(d.Answer||[]).filter(x=>x.type===wanted).map(x=>String(x.data)).sort();
+    return {
+      queryOk:true,
+      status:d.Status,
+      hasRecord:d.Status===0 && values.length>0,
+      ad:!!d.AD,
+      values
+    };
+  }catch(e){
+    return {queryOk:false,error:e?.name==="AbortError"?"TIMEOUT":"QUERY_ERROR",hasRecord:false,status:null,ad:false,values:[]};
+  }finally{c.done()}
+}
+
+function sameSet(a,b){
+  if(a.length!==b.length)return false;
+  return a.every((x,i)=>x===b[i]);
+}
+
+async function publicDnsCheck(host){
+  const [cf4,g4,cf6,g6]=await Promise.all([
+    queryResolver("cf",host,"A"),
+    queryResolver("google",host,"A"),
+    queryResolver("cf",host,"AAAA"),
+    queryResolver("google",host,"AAAA")
+  ]);
+
+  const summarize=(x,y)=>({
+    resolverAOk:x.queryOk,
+    resolverBOk:y.queryOk,
+    resolverAStatus:x.status,
+    resolverBStatus:y.status,
+    anyRecord:x.hasRecord||y.hasRecord,
+    bothHaveRecord:x.hasRecord&&y.hasRecord,
+    resultAgreement:
+      x.queryOk&&y.queryOk&&x.status===y.status&&sameSet(x.values,y.values),
+    dnssecValidated:x.ad||y.ad
+  });
+
+  // values 不向外返回，避免进入报告对象
+  return {ipv4:summarize(cf4,g4),ipv6:summarize(cf6,g6)};
+}
+
+async function runTarget(target,onAttempt){
+  const attempts=[];
+  for(let i=0;i<SETTINGS.attempts;i++){
+    const r=await nativeAttempt(target.host);
+    attempts.push(r);
+    if(onAttempt)onAttempt(i+1,r);
+    if(i<SETTINGS.attempts-1)await sleep(SETTINGS.pauseBetweenAttemptsMs);
+  }
+  const dns=await publicDnsCheck(target.host);
+  return {
+    code:target.code,
+    attempts:attempts.map(x=>({
+      ok:x.ok,
+      durationMs:Math.round(x.duration),
+      error:x.error
+    })),
+    stats:stats(attempts),
+    dns
+  };
+}
+
+function levelByScore(score){
+  if(score>=2)return "bad";
+  if(score===1)return "warn";
+  return "ok";
+}
+
+function buildDiagnosis(internet,targets){
+  const internetOk=internet.success>0;
+  const allFail=targets.every(t=>t.stats.success===0);
+  const anyTargetOk=targets.some(t=>t.stats.success>0);
+  const publicDnsHealthy=targets.every(t=>
+    (t.dns.ipv4.anyRecord||t.dns.ipv6.anyRecord) &&
+    (t.dns.ipv4.resolverAOk||t.dns.ipv4.resolverBOk||t.dns.ipv6.resolverAOk||t.dns.ipv6.resolverBOk)
+  );
+
+  const anyPublicDnsButNativeFail=targets.some(t=>
+    t.stats.success===0 && (t.dns.ipv4.anyRecord||t.dns.ipv6.anyRecord)
+  );
+  const mixedTargetReachability=
+    targets.some(t=>t.stats.success===0) && targets.some(t=>t.stats.success>0);
+
+  const anyPartial=targets.some(t=>t.stats.success>0&&t.stats.success<t.stats.total);
+  const anySlow=targets.some(t=>Number.isFinite(t.stats.avgMs)&&t.stats.avgMs>2500);
+  const resolverDisagreement=targets.some(t=>
+    (t.dns.ipv4.resolverAOk&&t.dns.ipv4.resolverBOk&&!t.dns.ipv4.resultAgreement) ||
+    (t.dns.ipv6.resolverAOk&&t.dns.ipv6.resolverBOk&&!t.dns.ipv6.resultAgreement)
+  );
+
+  const hasV4=targets.every(t=>t.dns.ipv4.anyRecord);
+  const hasV6=targets.every(t=>t.dns.ipv6.anyRecord);
+  const someV6=targets.some(t=>t.dns.ipv6.anyRecord);
+
+  const items=[];
+
+  // 总体网络
+  items.push({
+    key:"internet",
+    title:"总体网络",
+    level:internetOk?"ok":"bad",
+    detail:internetOk
+      ? `外网对照 ${internet.success}/${internet.total} 可达，用户并非完全断网。`
+      : `外网对照全部失败，当前网络整体异常时，域名专项结论可信度会下降。`
+  });
+
+  // 运营商 / 本地 DNS
+  let opScore=0,opDetail;
+  if(internetOk&&anyPublicDnsButNativeFail)opScore=2;
+  else if(internetOk&&mixedTargetReachability)opScore=1;
+  if(opScore>=2){
+    opDetail="外网正常、公共 DNS 有有效记录，但目标域名在本机网络连续失败。运营商/本地 DNS、网络过滤、TLS 或路由均值得重点排查。";
+  }else if(opScore===1){
+    opDetail="同一手机网络下两个目标表现不同，说明需要关注域名级 DNS/线路差异。";
+  }else{
+    opDetail=internetOk?"当前证据未显示明显的本地/运营商 DNS 异常。":"总体网络异常，暂时无法单独判断运营商 DNS。";
+  }
+  items.push({key:"operatorDns",title:"运营商 / 本地 DNS",level:levelByScore(opScore),detail:opDetail});
+
+  // DNS 污染/劫持：只能作为线索
+  let pollutionScore=0,pollutionDetail;
+  if(internetOk&&anyPublicDnsButNativeFail)pollutionScore=1;
+  if(resolverDisagreement)pollutionScore=Math.max(pollutionScore,1);
+  pollutionDetail=pollutionScore
+    ? "存在需要进一步核实的 DNS 线索。公共 DNS 与本机连接表现不一致，或不同公共解析器答案存在差异；CDN 地域调度也可能造成差异，网页不能据此直接确认污染/劫持。"
+    : "当前没有明显的 DNS 污染/劫持线索；网页本身无法读取系统 DNS 实际返回地址，因此不能做最终排除。";
+  items.push({key:"pollution",title:"DNS 污染 / 劫持",level:pollutionScore?"warn":"ok",detail:pollutionDetail});
+
+  // IPv4 / IPv6
+  let ipLevel="ok",ipDetail;
+  if(!hasV4){
+    ipLevel="bad";
+    ipDetail="至少一个目标未检测到 IPv4(A) 记录，需要检查 DNS 配置。";
+  }else if(!someV6){
+    ipLevel="info";
+    ipDetail="检测到 IPv4(A) 记录；未检测到 IPv6(AAAA) 记录。若业务并不要求 IPv6，这本身不一定是问题。";
+  }else if(!hasV6){
+    ipLevel="warn";
+    ipDetail="IPv4 记录正常，但两个目标的 IPv6(AAAA) 配置不一致，建议核对 CDN/DNS 的双栈配置。";
+  }else{
+    ipDetail="两个目标均检测到 IPv4(A) 和 IPv6(AAAA) 记录。注意：网页只能确认记录存在，不能强制分别测试 IPv4/IPv6 路径。";
+  }
+  items.push({key:"ip",title:"IPv4 / IPv6",level:ipLevel,detail:ipDetail});
+
+  // TLS / SNI
+  let tlsScore=0,tlsDetail;
+  if(internetOk&&anyPublicDnsButNativeFail)tlsScore=1;
+  if(mixedTargetReachability)tlsScore=Math.max(tlsScore,1);
+  tlsDetail=tlsScore
+    ? "浏览器无法暴露 TLS 握手错误详情。当前存在“公共 DNS 可解析但 HTTPS 无法建立”的目标，需要检查证书链、SNI、TLS 版本、网关拦截或中间设备。"
+    : anyTargetOk
+      ? "至少有目标能够完成 HTTPS 连接，未发现明确 TLS/SNI 异常证据。"
+      : "没有足够证据判断 TLS/SNI。";
+  items.push({key:"tls",title:"TLS / SNI",level:tlsScore?"warn":"ok",detail:tlsDetail});
+
+  // CDN / 路由
+  let routeScore=0,routeDetail;
+  if(mixedTargetReachability)routeScore=2;
+  else if(anyPartial||anySlow)routeScore=1;
+  else if(internetOk&&allFail&&publicDnsHealthy)routeScore=1;
+
+  if(routeScore>=2){
+    routeDetail="同一网络下一个目标可达、另一个目标持续失败，强烈建议对比两边 CDN 节点、源站回源、区域线路、ASN/运营商路由和防火墙策略。";
+  }else if(routeScore===1){
+    routeDetail=anyPartial
+      ? "存在间歇成功/失败，或连接明显偏慢，CDN 节点质量和网络路由值得重点排查。"
+      : "公共 DNS 正常但连接异常，CDN/网络路由是需要继续验证的方向之一。";
+  }else{
+    routeDetail="连续连接结果稳定，当前未看到明显 CDN/网络路由异常证据。";
+  }
+  items.push({key:"route",title:"CDN / 网络路由",level:levelByScore(routeScore),detail:routeDetail});
+
+  // App 对照提示
+  const allNativeOk=targets.every(t=>t.stats.success===t.stats.total);
+  if(internetOk&&allNativeOk){
+    items.push({
+      key:"app",
+      title:"如果 App 仍然失败",
+      level:"info",
+      detail:"浏览器环境下两个目标都稳定可达。若 App 同时段仍失败，应优先检查 App 自身 DNS 缓存/HTTP 客户端、代理/VPN、证书固定(Pinning)、IPv6 优先策略和网络权限。"
+    });
+  }
+
+  return items;
+}
+
+function dnsText(d){
+  if(!d.resolverAOk&&!d.resolverBOk)return "公共查询失败";
+  if(d.anyRecord){
+    if(d.resolverAOk&&d.resolverBOk){
+      return d.resultAgreement?"可解析（双源一致）":"可解析（双源有差异）";
+    }
+    return "可解析（单源）";
+  }
+  return "未发现记录";
+}
+
+function renderEnvironment(env){
+  const items=[
+    ["检测时间",env.time],
+    ["浏览器在线",env.browserOnline?"是":"否"],
+    ["网络类型",env.networkType],
+    ["有效网络",env.effectiveType],
+    ["估算 RTT",env.estimatedRtt],
+    ["估算下行",env.estimatedDownlink],
+    ["时区",env.timezone],
+    ["语言",env.language]
+  ];
+  environmentEl.innerHTML=items.map(([k,v])=>
+    `<div class="env-item"><div class="env-k">${esc(k)}</div><div class="env-v">${esc(v)}</div></div>`
+  ).join("");
+}
+
+function renderDomains(targets){
+  domainResultsEl.innerHTML=targets.map(t=>{
+    const s=t.stats;
+    let level="bad",text="不可达";
+    if(s.success===s.total){level="ok";text="稳定可达"}
+    else if(s.success>0){level="warn";text="间歇可达"}
+
+    const attemptHtml=t.attempts.map((a,i)=>
+      `<span class="attempt ${a.ok?"ok":"bad"}">第${i+1}次 ${a.ok?`${a.durationMs}ms`:(a.error==="TIMEOUT"?"超时":"失败")}</span>`
+    ).join("");
+
+    return `<div class="domain-card">
+      <div class="domain-head">
+        <div class="domain-name">${esc(t.code)}</div>
+        ${pill(level)}
+      </div>
+      <div class="domain-meta">
+        <div class="metric">
+          <div class="k">连续成功</div>
+          <div class="v">${s.success} / ${s.total}</div>
+        </div>
+        <div class="metric">
+          <div class="k">平均连接耗时</div>
+          <div class="v">${Number.isFinite(s.avgMs)?Math.round(s.avgMs)+" ms":"-"}</div>
+        </div>
+        <div class="metric">
+          <div class="k">IPv4 解析</div>
+          <div class="v">${esc(dnsText(t.dns.ipv4))}</div>
+        </div>
+        <div class="metric">
+          <div class="k">IPv6 解析</div>
+          <div class="v">${esc(dnsText(t.dns.ipv6))}</div>
+        </div>
+      </div>
+      <div class="attempts">${attemptHtml}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderDiagnosis(items){
+  diagnosisEl.innerHTML=items.map(x=>`
+    <div class="diag">
+      <div>${pill(x.level)}</div>
+      <div>
+        <div class="diag-title">${esc(x.title)}</div>
+        <div class="diag-detail">${esc(x.detail)}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function sanitizeForReport(data){
+  return {
+    version:"3.0-mobile-domain-diagnostics",
+    environment:{
+      time:data.environment.time,
+      timezone:data.environment.timezone,
+      browserOnline:data.environment.browserOnline,
+      networkType:data.environment.networkType,
+      effectiveType:data.environment.effectiveType,
+      estimatedRtt:data.environment.estimatedRtt,
+      estimatedDownlink:data.environment.estimatedDownlink
+    },
+    internet:{
+      success:data.internet.success,
+      total:data.internet.total
+    },
+    targets:data.targets.map(t=>({
+      code:t.code,
+      connection:{
+        success:t.stats.success,
+        total:t.stats.total,
+        averageMs:Number.isFinite(t.stats.avgMs)?Math.round(t.stats.avgMs):null,
+        attempts:t.attempts
+      },
+      dns:{
+        ipv4:{
+          result:dnsText(t.dns.ipv4),
+          dnssecValidated:t.dns.ipv4.dnssecValidated
+        },
+        ipv6:{
+          result:dnsText(t.dns.ipv6),
+          dnssecValidated:t.dns.ipv6.dnssecValidated
+        }
+      }
+    })),
+    diagnosis:data.diagnosis.map(x=>({
+      item:x.title,
+      status:x.level,
+      detail:x.detail
+    }))
+  };
+}
+
+async function run(){
+  startBtn.disabled=true;copyBtn.disabled=true;imageBtn.disabled=true;
+  diagnosisEl.innerHTML='<div class="muted">检测中…</div>';
+  domainResultsEl.innerHTML='<div class="muted">检测中…</div>';
+  reportEl.textContent="检测中…";
+  $("#canvasCard").hidden=true;
+
+  const env=networkInfo();
+  renderEnvironment(env);
+
+  const totalSteps=1+TARGETS.length*(SETTINGS.attempts+1);
+  let done=0;
+
+  setProgress(done,totalSteps,"正在检查当前手机外网…");
+  const internet=await checkInternetControls();
+  done++;
+  setProgress(done,totalSteps,`外网对照完成：${internet.success}/${internet.total} 可达`);
+
+  const targets=[];
+  for(const target of TARGETS){
+    statusEl.textContent=`正在检测 ${target.code}…`;
+    const t=await runTarget(target,(index)=>{
+      done++;
+      setProgress(done,totalSteps,`正在检测 ${target.code}：第 ${index}/${SETTINGS.attempts} 次连接`);
+    });
+    // DNS 作为该目标最后一步
+    done++;
+    setProgress(done,totalSteps,`正在分析 ${target.code} 的 DNS / IPv4 / IPv6`);
+    targets.push(t);
+    renderDomains(targets);
+  }
+
+  const diagnosis=buildDiagnosis(internet,targets);
+  const data={environment:env,internet,targets,diagnosis};
+  lastData=data;
+  renderDomains(targets);
+  renderDiagnosis(diagnosis);
+
+  const safe=sanitizeForReport(data);
+  lastReport=JSON.stringify(safe,null,2);
+  reportEl.textContent=lastReport;
+
+  setProgress(totalSteps,totalSteps,"检测完成");
+  startBtn.disabled=false;copyBtn.disabled=false;imageBtn.disabled=false;
+}
+
+async function copyReport(){
+  try{
+    await navigator.clipboard.writeText(lastReport);
+    statusEl.textContent="报告已复制";
+  }catch{
+    const t=document.createElement("textarea");
+    t.value=lastReport;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();
+    statusEl.textContent="报告已复制";
+  }
+}
+
+function wrap(ctx,text,x,y,maxWidth,lineHeight){
+  let line="",yy=y;
+  for(const ch of Array.from(String(text))){
+    const next=line+ch;
+    if(line&&ctx.measureText(next).width>maxWidth){
+      ctx.fillText(line,x,yy);line=ch;yy+=lineHeight;
+    }else line=next;
+  }
+  if(line){ctx.fillText(line,x,yy);yy+=lineHeight}
+  return yy;
+}
+
+function reportLines(){
+  const d=lastData,lines=[];
+  lines.push("网络与域名诊断报告");
+  lines.push(`时间：${d.environment.time}`);
+  lines.push(`网络：${d.environment.effectiveType}  浏览器在线=${d.environment.browserOnline?"是":"否"}`);
+  lines.push(`外网对照：${d.internet.success}/${d.internet.total} 可达`);
+  lines.push("");
+  lines.push("【重点排查】");
+  for(const x of d.diagnosis){
+    const s=x.level==="ok"?"正常":x.level==="bad"?"异常":x.level==="warn"?"可疑":"参考";
+    lines.push(`${x.title}：${s}`);
+    lines.push(`  ${x.detail}`);
+  }
+  lines.push("");
+  lines.push("【域名检测】");
+  for(const t of d.targets){
+    lines.push(`${t.code}`);
+    lines.push(`  连续成功：${t.stats.success}/${t.stats.total}`);
+    lines.push(`  平均耗时：${Number.isFinite(t.stats.avgMs)?Math.round(t.stats.avgMs)+"ms":"-"}`);
+    lines.push(`  IPv4：${dnsText(t.dns.ipv4)}`);
+    lines.push(`  IPv6：${dnsText(t.dns.ipv6)}`);
+    t.attempts.forEach((a,i)=>lines.push(`  第${i+1}次：${a.ok?a.durationMs+"ms":a.error==="TIMEOUT"?"超时":"失败"}`));
+  }
+  lines.push("");
+  lines.push("报告不包含真实域名和 IP。");
+  return lines;
+}
+
+function generateImage(){
+  if(!lastData)return;
+  const lines=reportLines();
+  const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
+  const width=1080,pad=48,maxWidth=width-pad*2,lineHeight=38;
+  ctx.font='24px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif';
+
+  let estimated=0;
+  for(const l of lines) estimated+=Math.max(1,Math.ceil(ctx.measureText(l||" ").width/maxWidth));
+  canvas.width=width;
+  canvas.height=Math.max(900,pad*2+estimated*lineHeight+100);
+
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#172033";
+  let y=pad;
+
+  for(const l of lines){
+    if(l==="网络与域名诊断报告"){
+      ctx.font='bold 36px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif';
+      y=wrap(ctx,l,pad,y,maxWidth,50)+10;
+      ctx.font='24px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif';
+    }else{
+      y=wrap(ctx,l||" ",pad,y,maxWidth,lineHeight);
+    }
+  }
+
+  const holder=$("#canvasHolder");
+  holder.innerHTML="";
+  holder.appendChild(canvas);
+  $("#canvasCard").hidden=false;
+  $("#canvasCard").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+startBtn.addEventListener("click",run);
+copyBtn.addEventListener("click",copyReport);
+imageBtn.addEventListener("click",generateImage);
+
+renderEnvironment(networkInfo());
+</script>
+</body>
+</html>
