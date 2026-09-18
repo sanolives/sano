@@ -1,752 +1,1629 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#f5f7fa">
-<title>网络诊断</title>
-<style>
-:root{
-  --bg:#f5f7fa;--card:#fff;--text:#172033;--muted:#667085;--line:#e4e7ec;
-  --ok:#15803d;--okbg:#eaf7ee;--warn:#b25e09;--warnbg:#fff4df;
-  --bad:#c62828;--badbg:#ffebeb;--info:#175cd3;--infobg:#eef4ff;
-}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{-webkit-text-size-adjust:100%}
-body{
-  margin:0;background:var(--bg);color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Arial,sans-serif;
-}
-.wrap{
-  width:100%;max-width:860px;margin:0 auto;
-  padding:max(14px,env(safe-area-inset-top)) 12px max(28px,env(safe-area-inset-bottom));
-}
-.card{
-  background:var(--card);border:1px solid var(--line);border-radius:16px;
-  padding:16px;margin-bottom:12px;box-shadow:0 3px 14px rgba(16,24,40,.05)
-}
-.hero{padding:18px 16px}
-h1{font-size:22px;line-height:1.3;margin:0 0 8px}
-h2{font-size:17px;line-height:1.35;margin:0 0 12px}
-p{margin:0}
-.muted{color:var(--muted);font-size:13px;line-height:1.65}
-.notice{
-  margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--infobg);
-  color:#344054;font-size:13px;line-height:1.6
-}
-.toolbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
-.toolbar .primary{grid-column:1/-1}
-button{
-  min-height:48px;border:0;border-radius:12px;padding:12px 14px;
-  font-size:15px;font-weight:700;cursor:pointer
-}
-button.primary{background:var(--info);color:#fff}
-button.secondary{background:#eef2f6;color:var(--text)}
-button:disabled{opacity:.52;cursor:not-allowed}
-.progress{height:8px;border-radius:999px;background:#e8ecf1;overflow:hidden;margin-top:13px}
-.progress>div{height:100%;width:0;background:var(--info);transition:width .22s ease}
-.status-text{margin-top:8px;min-height:20px}
-
-.summary-grid{display:grid;grid-template-columns:1fr;gap:9px}
-.diag{
-  border:1px solid var(--line);border-radius:12px;padding:12px;
-  display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start
-}
-.diag-title{font-weight:700;font-size:14px;margin-bottom:4px}
-.diag-detail{font-size:12px;color:var(--muted);line-height:1.55}
-.pill{
-  display:inline-flex;align-items:center;justify-content:center;
-  min-width:46px;height:24px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap
-}
-.pill.ok{color:var(--ok);background:var(--okbg)}
-.pill.warn{color:var(--warn);background:var(--warnbg)}
-.pill.bad{color:var(--bad);background:var(--badbg)}
-.pill.info{color:var(--info);background:var(--infobg)}
-
-.domain-card{border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px}
-.domain-head{display:flex;justify-content:space-between;gap:12px;align-items:center}
-.domain-name{font-size:18px;font-weight:800}
-.domain-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
-.metric{border:1px solid var(--line);border-radius:10px;padding:10px;min-height:66px}
-.metric .k{font-size:11px;color:var(--muted);margin-bottom:5px}
-.metric .v{font-size:14px;font-weight:700;word-break:break-word}
-.attempts{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
-.attempt{
-  border-radius:999px;padding:5px 9px;font-size:11px;font-weight:700;
-  background:#eef2f6;color:#475467
-}
-.attempt.ok{background:var(--okbg);color:var(--ok)}
-.attempt.bad{background:var(--badbg);color:var(--bad)}
-
-.env-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.env-item{border:1px solid var(--line);border-radius:10px;padding:10px}
-.env-k{font-size:11px;color:var(--muted)}
-.env-v{font-size:13px;margin-top:4px;word-break:break-word}
-
-pre{
-  white-space:pre-wrap;word-break:break-word;background:#111827;color:#e5e7eb;
-  padding:13px;border-radius:10px;font-size:11px;line-height:1.55;max-height:420px;overflow:auto
-}
-#canvasHolder canvas{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:10px}
-
-@media (min-width:640px){
-  .wrap{padding-left:18px;padding-right:18px}
-  .summary-grid{grid-template-columns:1fr 1fr}
-  .domain-meta{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .env-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .toolbar{display:flex}
-  .toolbar .primary{grid-column:auto}
-  button{min-width:130px}
-}
-@media (max-width:360px){
-  .domain-meta,.env-grid{grid-template-columns:1fr}
-  .card{padding:14px}
-}
-</style>
-</head>
-<body>
-<div class="wrap">
-
-  <section class="card hero">
-    <h1>网络与域名诊断</h1>
-    <p class="muted">检测当前手机网络下的域名解析与 HTTPS 可达性。不会上传结果，不展示域名和 IP。</p>
-    <div class="notice">
-      检测会进行外网对照、3 次连续连接、双公共 DNS 对照、IPv4/IPv6 记录检查，并针对运营商 DNS、DNS 污染/劫持、TLS/SNI、CDN/网络路由给出排查提示。
-    </div>
-
-    <div class="toolbar">
-      <button id="startBtn" class="primary">开始全面检测</button>
-      <button id="copyBtn" class="secondary" disabled>复制报告</button>
-      <button id="imageBtn" class="secondary" disabled>生成截图报告</button>
-    </div>
-
-    <div class="progress"><div id="bar"></div></div>
-    <div id="status" class="muted status-text">等待开始</div>
-  </section>
-
-  <section class="card">
-    <h2>重点排查</h2>
-    <div id="diagnosis" class="summary-grid">
-      <div class="muted">完成检测后显示。</div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>域名检测结果</h2>
-    <div id="domainResults" class="muted">尚未检测</div>
-    <div class="notice">
-      “IPv4 / IPv6”表示域名是否存在相应 DNS 记录，不代表当前手机一定能通过该协议连接。
-      纯网页无法强制目标域名分别只走 IPv4 或 IPv6。
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>网络环境</h2>
-    <div id="environment" class="env-grid"></div>
-  </section>
-
-  <section class="card">
-    <h2>完整报告</h2>
-    <pre id="report">尚未检测</pre>
-  </section>
-
-  <section class="card" id="canvasCard" hidden>
-    <h2>截图报告</h2>
-    <div id="canvasHolder"></div>
-  </section>
-</div>
-
-<script>
-/*
- * 真实域名仅在代码内部作为检测目标。
- * 页面、复制报告、截图均只显示 sano / fofun。
- */
-const TARGETS = [
-  { code: "sano",  host: ["api","sanolive","net"].join(".") },
-  { code: "fofun", host: ["api","fofunlive","net"].join(".") }
-];
-
-const SETTINGS = {
-  attempts: 3,
-  timeoutMs: 6500,
-  pauseBetweenAttemptsMs: 300
-};
-
-const $ = s => document.querySelector(s);
-const startBtn=$("#startBtn"), copyBtn=$("#copyBtn"), imageBtn=$("#imageBtn");
-const bar=$("#bar"), statusEl=$("#status"), reportEl=$("#report");
-const diagnosisEl=$("#diagnosis"), domainResultsEl=$("#domainResults"), environmentEl=$("#environment");
-
-let lastData=null,lastReport="";
-
-function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
-function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
-function timeoutController(ms){
-  const c=new AbortController();
-  const t=setTimeout(()=>c.abort(),ms);
-  return {signal:c.signal,done:()=>clearTimeout(t)};
-}
-function networkInfo(){
-  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||null;
-  return {
-    time:new Date().toLocaleString(),
-    timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"-",
-    browserOnline:navigator.onLine,
-    language:navigator.language||"-",
-    networkType:c?.type||"-",
-    effectiveType:c?.effectiveType||"-",
-    estimatedRtt:Number.isFinite(c?.rtt)?`${c.rtt} ms`:"-",
-    estimatedDownlink:Number.isFinite(c?.downlink)?`${c.downlink} Mbps`:"-",
-    userAgent:navigator.userAgent
-  };
-}
-function setProgress(done,total,text){
-  bar.style.width=`${Math.max(0,Math.min(100,Math.round(done/Math.max(1,total)*100)))}%`;
-  statusEl.textContent=text;
-}
-function pill(level){
-  const map={ok:["正常","ok"],warn:["可疑","warn"],bad:["异常","bad"],info:["参考","info"]};
-  const [text,cls]=map[level]||map.info;
-  return `<span class="pill ${cls}">${text}</span>`;
-}
-function median(arr){
-  const a=[...arr].sort((x,y)=>x-y);
-  if(!a.length)return null;
-  const m=Math.floor(a.length/2);
-  return a.length%2?a[m]:(a[m-1]+a[m])/2;
-}
-function stats(attempts){
-  const ok=attempts.filter(x=>x.ok);
-  const durations=ok.map(x=>x.duration);
-  return {
-    success:ok.length,
-    total:attempts.length,
-    successRate:attempts.length?ok.length/attempts.length:0,
-    avgMs:durations.length?durations.reduce((a,b)=>a+b,0)/durations.length:null,
-    medianMs:median(durations),
-    maxMs:durations.length?Math.max(...durations):null,
-    minMs:durations.length?Math.min(...durations):null
-  };
-}
-
-/* 外网对照：只判断用户当前浏览器整体网络是否能发出 HTTPS 请求 */
-async function controlRequest(url){
-  const c=timeoutController(SETTINGS.timeoutMs);
-  const begin=performance.now();
-  try{
-    await fetch(url+(url.includes("?")?"&":"?")+"d="+Date.now()+Math.random(),{
-      mode:"no-cors",cache:"no-store",credentials:"omit",signal:c.signal
-    });
-    return {ok:true,duration:performance.now()-begin};
-  }catch(e){
-    return {ok:false,duration:performance.now()-begin,error:e?.name==="AbortError"?"TIMEOUT":"NETWORK_ERROR"};
-  }finally{c.done()}
-}
-
-async function checkInternetControls(){
-  const urls=[
-    "https://www.cloudflare.com/favicon.ico",
-    "https://github.com/favicon.ico"
-  ];
-  const values=await Promise.all(urls.map(controlRequest));
-  return {
-    success:values.filter(x=>x.ok).length,
-    total:values.length,
-    details:values.map(x=>({ok:x.ok,durationMs:Math.round(x.duration),error:x.error||""}))
-  };
-}
-
-/*
- * 本机网络域名连接：
- * 不读取 HTTP 状态、不依赖业务接口。
- * no-cors 请求成功 = 浏览器至少完成了 DNS + TCP + TLS + HTTP 请求链路。
- */
-async function nativeAttempt(host){
-  const c=timeoutController(SETTINGS.timeoutMs);
-  const begin=performance.now();
-  const url=`https://${host}/?__nd=${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  try{
-    await fetch(url,{
-      mode:"no-cors",
-      method:"GET",
-      cache:"no-store",
-      credentials:"omit",
-      redirect:"follow",
-      signal:c.signal
-    });
-    return {ok:true,duration:performance.now()-begin,error:""};
-  }catch(e){
-    return {
-      ok:false,
-      duration:performance.now()-begin,
-      error:e?.name==="AbortError"?"TIMEOUT":"NETWORK_ERROR"
-    };
-  }finally{c.done()}
-}
-
-/*
- * 公共 DNS 对照。
- * 代码只保留“是否有记录 / 两个解析器结果是否一致”。
- * 不把 IP 写入 UI、报告或截图。
- */
-async function queryResolver(provider,host,type){
-  let url,headers={};
-  if(provider==="cf"){
-    url=`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`;
-    headers={"Accept":"application/dns-json"};
-  }else{
-    url=`https://dns.google/resolve?name=${encodeURIComponent(host)}&type=${type}`;
-  }
-
-  const c=timeoutController(SETTINGS.timeoutMs);
-  try{
-    const r=await fetch(url,{method:"GET",cache:"no-store",credentials:"omit",headers,signal:c.signal});
-    if(!r.ok)return {queryOk:false,httpStatus:r.status,hasRecord:false,status:null,ad:false,values:[]};
-    const d=await r.json();
-    const wanted=type==="A"?1:28;
-    const values=(d.Answer||[]).filter(x=>x.type===wanted).map(x=>String(x.data)).sort();
-    return {
-      queryOk:true,
-      status:d.Status,
-      hasRecord:d.Status===0 && values.length>0,
-      ad:!!d.AD,
-      values
-    };
-  }catch(e){
-    return {queryOk:false,error:e?.name==="AbortError"?"TIMEOUT":"QUERY_ERROR",hasRecord:false,status:null,ad:false,values:[]};
-  }finally{c.done()}
-}
-
-function sameSet(a,b){
-  if(a.length!==b.length)return false;
-  return a.every((x,i)=>x===b[i]);
-}
-
-async function publicDnsCheck(host){
-  const [cf4,g4,cf6,g6]=await Promise.all([
-    queryResolver("cf",host,"A"),
-    queryResolver("google",host,"A"),
-    queryResolver("cf",host,"AAAA"),
-    queryResolver("google",host,"AAAA")
-  ]);
-
-  const summarize=(x,y)=>({
-    resolverAOk:x.queryOk,
-    resolverBOk:y.queryOk,
-    resolverAStatus:x.status,
-    resolverBStatus:y.status,
-    anyRecord:x.hasRecord||y.hasRecord,
-    bothHaveRecord:x.hasRecord&&y.hasRecord,
-    resultAgreement:
-      x.queryOk&&y.queryOk&&x.status===y.status&&sameSet(x.values,y.values),
-    dnssecValidated:x.ad||y.ad
-  });
-
-  // values 不向外返回，避免进入报告对象
-  return {ipv4:summarize(cf4,g4),ipv6:summarize(cf6,g6)};
-}
-
-async function runTarget(target,onAttempt){
-  const attempts=[];
-  for(let i=0;i<SETTINGS.attempts;i++){
-    const r=await nativeAttempt(target.host);
-    attempts.push(r);
-    if(onAttempt)onAttempt(i+1,r);
-    if(i<SETTINGS.attempts-1)await sleep(SETTINGS.pauseBetweenAttemptsMs);
-  }
-  const dns=await publicDnsCheck(target.host);
-  return {
-    code:target.code,
-    attempts:attempts.map(x=>({
-      ok:x.ok,
-      durationMs:Math.round(x.duration),
-      error:x.error
-    })),
-    stats:stats(attempts),
-    dns
-  };
-}
-
-function levelByScore(score){
-  if(score>=2)return "bad";
-  if(score===1)return "warn";
-  return "ok";
-}
-
-function buildDiagnosis(internet,targets){
-  const internetOk=internet.success>0;
-  const allFail=targets.every(t=>t.stats.success===0);
-  const anyTargetOk=targets.some(t=>t.stats.success>0);
-  const publicDnsHealthy=targets.every(t=>
-    (t.dns.ipv4.anyRecord||t.dns.ipv6.anyRecord) &&
-    (t.dns.ipv4.resolverAOk||t.dns.ipv4.resolverBOk||t.dns.ipv6.resolverAOk||t.dns.ipv6.resolverBOk)
-  );
-
-  const anyPublicDnsButNativeFail=targets.some(t=>
-    t.stats.success===0 && (t.dns.ipv4.anyRecord||t.dns.ipv6.anyRecord)
-  );
-  const mixedTargetReachability=
-    targets.some(t=>t.stats.success===0) && targets.some(t=>t.stats.success>0);
-
-  const anyPartial=targets.some(t=>t.stats.success>0&&t.stats.success<t.stats.total);
-  const anySlow=targets.some(t=>Number.isFinite(t.stats.avgMs)&&t.stats.avgMs>2500);
-  const resolverDisagreement=targets.some(t=>
-    (t.dns.ipv4.resolverAOk&&t.dns.ipv4.resolverBOk&&!t.dns.ipv4.resultAgreement) ||
-    (t.dns.ipv6.resolverAOk&&t.dns.ipv6.resolverBOk&&!t.dns.ipv6.resultAgreement)
-  );
-
-  const hasV4=targets.every(t=>t.dns.ipv4.anyRecord);
-  const hasV6=targets.every(t=>t.dns.ipv6.anyRecord);
-  const someV6=targets.some(t=>t.dns.ipv6.anyRecord);
-
-  const items=[];
-
-  // 总体网络
-  items.push({
-    key:"internet",
-    title:"总体网络",
-    level:internetOk?"ok":"bad",
-    detail:internetOk
-      ? `外网对照 ${internet.success}/${internet.total} 可达，用户并非完全断网。`
-      : `外网对照全部失败，当前网络整体异常时，域名专项结论可信度会下降。`
-  });
-
-  // 运营商 / 本地 DNS
-  let opScore=0,opDetail;
-  if(internetOk&&anyPublicDnsButNativeFail)opScore=2;
-  else if(internetOk&&mixedTargetReachability)opScore=1;
-  if(opScore>=2){
-    opDetail="外网正常、公共 DNS 有有效记录，但目标域名在本机网络连续失败。运营商/本地 DNS、网络过滤、TLS 或路由均值得重点排查。";
-  }else if(opScore===1){
-    opDetail="同一手机网络下两个目标表现不同，说明需要关注域名级 DNS/线路差异。";
-  }else{
-    opDetail=internetOk?"当前证据未显示明显的本地/运营商 DNS 异常。":"总体网络异常，暂时无法单独判断运营商 DNS。";
-  }
-  items.push({key:"operatorDns",title:"运营商 / 本地 DNS",level:levelByScore(opScore),detail:opDetail});
-
-  // DNS 污染/劫持：只能作为线索
-  let pollutionScore=0,pollutionDetail;
-  if(internetOk&&anyPublicDnsButNativeFail)pollutionScore=1;
-  if(resolverDisagreement)pollutionScore=Math.max(pollutionScore,1);
-  pollutionDetail=pollutionScore
-    ? "存在需要进一步核实的 DNS 线索。公共 DNS 与本机连接表现不一致，或不同公共解析器答案存在差异；CDN 地域调度也可能造成差异，网页不能据此直接确认污染/劫持。"
-    : "当前没有明显的 DNS 污染/劫持线索；网页本身无法读取系统 DNS 实际返回地址，因此不能做最终排除。";
-  items.push({key:"pollution",title:"DNS 污染 / 劫持",level:pollutionScore?"warn":"ok",detail:pollutionDetail});
-
-  // IPv4 / IPv6
-  let ipLevel="ok",ipDetail;
-  if(!hasV4){
-    ipLevel="bad";
-    ipDetail="至少一个目标未检测到 IPv4(A) 记录，需要检查 DNS 配置。";
-  }else if(!someV6){
-    ipLevel="info";
-    ipDetail="检测到 IPv4(A) 记录；未检测到 IPv6(AAAA) 记录。若业务并不要求 IPv6，这本身不一定是问题。";
-  }else if(!hasV6){
-    ipLevel="warn";
-    ipDetail="IPv4 记录正常，但两个目标的 IPv6(AAAA) 配置不一致，建议核对 CDN/DNS 的双栈配置。";
-  }else{
-    ipDetail="两个目标均检测到 IPv4(A) 和 IPv6(AAAA) 记录。注意：网页只能确认记录存在，不能强制分别测试 IPv4/IPv6 路径。";
-  }
-  items.push({key:"ip",title:"IPv4 / IPv6",level:ipLevel,detail:ipDetail});
-
-  // TLS / SNI
-  let tlsScore=0,tlsDetail;
-  if(internetOk&&anyPublicDnsButNativeFail)tlsScore=1;
-  if(mixedTargetReachability)tlsScore=Math.max(tlsScore,1);
-  tlsDetail=tlsScore
-    ? "浏览器无法暴露 TLS 握手错误详情。当前存在“公共 DNS 可解析但 HTTPS 无法建立”的目标，需要检查证书链、SNI、TLS 版本、网关拦截或中间设备。"
-    : anyTargetOk
-      ? "至少有目标能够完成 HTTPS 连接，未发现明确 TLS/SNI 异常证据。"
-      : "没有足够证据判断 TLS/SNI。";
-  items.push({key:"tls",title:"TLS / SNI",level:tlsScore?"warn":"ok",detail:tlsDetail});
-
-  // CDN / 路由
-  let routeScore=0,routeDetail;
-  if(mixedTargetReachability)routeScore=2;
-  else if(anyPartial||anySlow)routeScore=1;
-  else if(internetOk&&allFail&&publicDnsHealthy)routeScore=1;
-
-  if(routeScore>=2){
-    routeDetail="同一网络下一个目标可达、另一个目标持续失败，强烈建议对比两边 CDN 节点、源站回源、区域线路、ASN/运营商路由和防火墙策略。";
-  }else if(routeScore===1){
-    routeDetail=anyPartial
-      ? "存在间歇成功/失败，或连接明显偏慢，CDN 节点质量和网络路由值得重点排查。"
-      : "公共 DNS 正常但连接异常，CDN/网络路由是需要继续验证的方向之一。";
-  }else{
-    routeDetail="连续连接结果稳定，当前未看到明显 CDN/网络路由异常证据。";
-  }
-  items.push({key:"route",title:"CDN / 网络路由",level:levelByScore(routeScore),detail:routeDetail});
-
-  // App 对照提示
-  const allNativeOk=targets.every(t=>t.stats.success===t.stats.total);
-  if(internetOk&&allNativeOk){
-    items.push({
-      key:"app",
-      title:"如果 App 仍然失败",
-      level:"info",
-      detail:"浏览器环境下两个目标都稳定可达。若 App 同时段仍失败，应优先检查 App 自身 DNS 缓存/HTTP 客户端、代理/VPN、证书固定(Pinning)、IPv6 优先策略和网络权限。"
-    });
-  }
-
-  return items;
-}
-
-function dnsText(d){
-  if(!d.resolverAOk&&!d.resolverBOk)return "公共查询失败";
-  if(d.anyRecord){
-    if(d.resolverAOk&&d.resolverBOk){
-      return d.resultAgreement?"可解析（双源一致）":"可解析（双源有差异）";
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#080b18" />
+  <title>Sano Live Network Diagnostic</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070913;
+      --bg-soft: #0d1021;
+      --panel: rgba(16, 19, 38, 0.78);
+      --panel-strong: rgba(18, 21, 44, 0.94);
+      --border: rgba(162, 140, 255, 0.18);
+      --text: #f7f8ff;
+      --muted: #9aa3bd;
+      --purple: #a56cff;
+      --purple-2: #7c4dff;
+      --cyan: #55d9ff;
+      --green: #54e39a;
+      --yellow: #ffc85a;
+      --red: #ff6b83;
+      --neutral: #aab2c8;
+      --shadow: 0 30px 80px rgba(0, 0, 0, 0.48);
     }
-    return "可解析（单源）";
-  }
-  return "未发现记录";
-}
 
-function renderEnvironment(env){
-  const items=[
-    ["检测时间",env.time],
-    ["浏览器在线",env.browserOnline?"是":"否"],
-    ["网络类型",env.networkType],
-    ["有效网络",env.effectiveType],
-    ["估算 RTT",env.estimatedRtt],
-    ["估算下行",env.estimatedDownlink],
-    ["时区",env.timezone],
-    ["语言",env.language]
-  ];
-  environmentEl.innerHTML=items.map(([k,v])=>
-    `<div class="env-item"><div class="env-k">${esc(k)}</div><div class="env-v">${esc(v)}</div></div>`
-  ).join("");
-}
+    * {
+      box-sizing: border-box;
+    }
 
-function renderDomains(targets){
-  domainResultsEl.innerHTML=targets.map(t=>{
-    const s=t.stats;
-    let level="bad",text="不可达";
-    if(s.success===s.total){level="ok";text="稳定可达"}
-    else if(s.success>0){level="warn";text="间歇可达"}
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+    }
 
-    const attemptHtml=t.attempts.map((a,i)=>
-      `<span class="attempt ${a.ok?"ok":"bad"}">第${i+1}次 ${a.ok?`${a.durationMs}ms`:(a.error==="TIMEOUT"?"超时":"失败")}</span>`
-    ).join("");
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow-x: hidden;
+    }
 
-    return `<div class="domain-card">
-      <div class="domain-head">
-        <div class="domain-name">${esc(t.code)}</div>
-        ${pill(level)}
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+      background-size: 38px 38px;
+      mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,.45) 54%, transparent 100%);
+    }
+
+    .orb {
+      position: fixed;
+      border-radius: 999px;
+      filter: blur(70px);
+      pointer-events: none;
+      opacity: .38;
+      animation: floatOrb 10s ease-in-out infinite alternate;
+    }
+
+    .orb.one {
+      width: 320px;
+      height: 320px;
+      top: -110px;
+      left: -90px;
+      background: #723cff;
+    }
+
+    .orb.two {
+      width: 280px;
+      height: 280px;
+      right: -100px;
+      top: 28%;
+      background: #006eff;
+      animation-delay: -3s;
+    }
+
+    .orb.three {
+      width: 240px;
+      height: 240px;
+      left: 35%;
+      bottom: -130px;
+      background: #d84cff;
+      animation-delay: -6s;
+    }
+
+    @keyframes floatOrb {
+      from { transform: translate3d(0, 0, 0) scale(1); }
+      to { transform: translate3d(18px, 24px, 0) scale(1.08); }
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: max(24px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
+    }
+
+    .shell {
+      width: min(100%, 520px);
+    }
+
+    .logo-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 22px;
+      filter: drop-shadow(0 12px 28px rgba(127, 76, 255, .25));
+    }
+
+    .logo {
+      width: min(74vw, 290px);
+      height: auto;
+      display: block;
+    }
+
+    .card {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(26, 29, 57, .88), rgba(12, 15, 31, .92));
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.035);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(168, 103, 255, .14), transparent 34%),
+        radial-gradient(circle at 100% 75%, rgba(69, 201, 255, .08), transparent 35%);
+    }
+
+    .main {
+      position: relative;
+      padding: 26px;
+    }
+
+    .intro {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .intro h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: .02em;
+      font-weight: 760;
+    }
+
+    .intro p {
+      margin: 9px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .field-label {
+      display: block;
+      margin: 0 0 9px 4px;
+      font-size: 13px;
+      color: #c8cee2;
+      font-weight: 650;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-wrap::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: 17px;
+      background: linear-gradient(115deg, rgba(160, 105, 255, .55), rgba(75, 208, 255, .16), rgba(255,255,255,.08));
+      opacity: .46;
+      pointer-events: none;
+    }
+
+    input {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 58px;
+      border: 0;
+      outline: 0;
+      border-radius: 16px;
+      padding: 0 18px;
+      background: rgba(6, 8, 20, .88);
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 680;
+      letter-spacing: .06em;
+      caret-color: var(--cyan);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
+      transition: box-shadow .2s ease, transform .2s ease;
+    }
+
+    input:focus {
+      box-shadow:
+        inset 0 0 0 1px rgba(123, 96, 255, .38),
+        0 0 0 4px rgba(117, 78, 255, .11);
+    }
+
+    input::placeholder {
+      color: #626b86;
+      font-size: 15px;
+      letter-spacing: 0;
+      font-weight: 500;
+    }
+
+
+    .start-btn {
+      position: relative;
+      width: 100%;
+      height: 58px;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 17px;
+      color: white;
+      font-size: 16px;
+      font-weight: 750;
+      cursor: pointer;
+      overflow: hidden;
+      background:
+        linear-gradient(105deg, #6942ed 0%, #9c56ff 48%, #477dff 100%);
+      box-shadow:
+        0 14px 32px rgba(104, 65, 235, .28),
+        inset 0 1px 0 rgba(255,255,255,.24);
+      transition: transform .2s ease, filter .2s ease, opacity .2s ease;
+    }
+
+    .start-btn::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-120%);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.26), transparent);
+      transition: transform .55s ease;
+    }
+
+    .start-btn:hover::before {
+      transform: translateX(120%);
+    }
+
+    .start-btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.07);
+    }
+
+    .start-btn:active {
+      transform: translateY(1px) scale(.995);
+    }
+
+    .start-btn:disabled {
+      cursor: not-allowed;
+      opacity: .64;
+      transform: none;
+      filter: none;
+    }
+
+    .diagnostic {
+      display: none;
+      margin-top: 24px;
+      animation: reveal .36s ease both;
+    }
+
+    .diagnostic.show {
+      display: block;
+    }
+
+    @keyframes reveal {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(167, 150, 255, .2), transparent);
+      margin-bottom: 22px;
+    }
+
+    .progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .progress-title {
+      font-size: 14px;
+      color: #e7eaff;
+      font-weight: 680;
+    }
+
+    .progress-value {
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      color: #9ca6c2;
+    }
+
+    .progress-track {
+      height: 10px;
+      padding: 2px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.055);
+      box-shadow: inset 0 1px 4px rgba(0,0,0,.32);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      position: relative;
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #7649ff, #b35cff 48%, #51d6ff);
+      box-shadow: 0 0 18px rgba(139, 84, 255, .42);
+      transition: width .42s cubic-bezier(.22,.8,.28,1);
+    }
+
+    .progress-bar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.65) 50%, transparent 100%);
+      transform: translateX(-120%);
+      animation: shimmer 1.25s infinite;
+    }
+
+    @keyframes shimmer {
+      to { transform: translateX(120%); }
+    }
+
+    .steps {
+      display: grid;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 12px;
+      border-radius: 13px;
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,255,255,.035);
+      transition: background .2s ease, border-color .2s ease, transform .2s ease;
+    }
+
+    .step.running {
+      background: rgba(124, 77, 255, .08);
+      border-color: rgba(150, 110, 255, .18);
+      transform: translateX(2px);
+    }
+
+    .step-icon {
+      flex: 0 0 28px;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .step-icon.pending {
+      color: #66708d;
+    }
+
+    .step-icon.running {
+      color: var(--cyan);
+      animation: spin 1s linear infinite;
+    }
+
+    .step-icon.success {
+      color: var(--green);
+    }
+
+    .step-icon.warning {
+      color: var(--yellow);
+    }
+
+    .step-icon.error {
+      color: var(--red);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .step-name {
+      flex: 1;
+      font-size: 14px;
+      color: #dfe3f6;
+    }
+
+    .step-detail {
+      margin-left: 12px;
+      font-size: 11px;
+      color: #737d99;
+      white-space: nowrap;
+    }
+
+    .result {
+      display: none;
+      margin-top: 20px;
+      padding: 18px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.018));
+      border: 1px solid rgba(255,255,255,.055);
+      animation: reveal .34s ease both;
+    }
+
+    .result.show {
+      display: block;
+    }
+
+    .result-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 760;
+    }
+
+    .result-state.normal {
+      color: var(--green);
+    }
+
+    .result-state.warning {
+      color: var(--yellow);
+    }
+
+    .result-state.error {
+      color: var(--red);
+    }
+
+    .result-desc {
+      margin-top: 8px;
+      color: #939db9;
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .report-box {
+      margin-top: 16px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+
+    .report-label {
+      font-size: 11px;
+      color: #747e9b;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .report-id {
+      margin-top: 6px;
+      font-size: 15px;
+      font-weight: 720;
+      color: #edf0ff;
+      letter-spacing: .06em;
+      word-break: break-all;
+    }
+
+    .submit-status {
+      margin-top: 9px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #aab3cb;
+    }
+
+    .submit-status.ok {
+      color: var(--green);
+    }
+
+    .submit-status.warn {
+      color: var(--yellow);
+    }
+
+    .submit-status.error {
+      color: var(--red);
+    }
+
+    .cooldown {
+      margin-top: 12px;
+      text-align: center;
+      color: #6f7894;
+      font-size: 11px;
+      min-height: 16px;
+    }
+
+    @media (max-width: 480px) {
+      .page {
+        align-items: flex-start;
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      .shell {
+        margin-top: 20px;
+      }
+
+      .main {
+        padding: 22px 18px;
+      }
+
+      .card {
+        border-radius: 24px;
+      }
+
+      .logo-wrap {
+        margin-bottom: 18px;
+      }
+
+      .intro h1 {
+        font-size: 20px;
+      }
+
+      .step {
+        padding: 0 10px;
+      }
+
+      .step-detail {
+        max-width: 128px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: .001ms !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="orb one"></div>
+  <div class="orb two"></div>
+  <div class="orb three"></div>
+
+  <main class="page">
+    <div class="shell">
+      <div class="logo-wrap">
+        <img class="logo" src="data:image/png;base64,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" alt="Sano Live" />
       </div>
-      <div class="domain-meta">
-        <div class="metric">
-          <div class="k">连续成功</div>
-          <div class="v">${s.success} / ${s.total}</div>
-        </div>
-        <div class="metric">
-          <div class="k">平均连接耗时</div>
-          <div class="v">${Number.isFinite(s.avgMs)?Math.round(s.avgMs)+" ms":"-"}</div>
-        </div>
-        <div class="metric">
-          <div class="k">IPv4 解析</div>
-          <div class="v">${esc(dnsText(t.dns.ipv4))}</div>
-        </div>
-        <div class="metric">
-          <div class="k">IPv6 解析</div>
-          <div class="v">${esc(dnsText(t.dns.ipv6))}</div>
-        </div>
-      </div>
-      <div class="attempts">${attemptHtml}</div>
-    </div>`;
-  }).join("");
-}
 
-function renderDiagnosis(items){
-  diagnosisEl.innerHTML=items.map(x=>`
-    <div class="diag">
-      <div>${pill(x.level)}</div>
-      <div>
-        <div class="diag-title">${esc(x.title)}</div>
-        <div class="diag-detail">${esc(x.detail)}</div>
-      </div>
+      <section class="card">
+        <div class="main">
+          <div class="intro">
+            <h1>Network Diagnostic</h1>
+            <p>Check your current network environment and service connectivity. A diagnostic result will be generated automatically.</p>
+          </div>
+
+          <label class="field-label" for="userId">Sano Live ID</label>
+          <div class="input-wrap">
+            <input
+              id="userId"
+              inputmode="numeric"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              maxlength="20"
+              placeholder="Enter your Sano Live ID"
+              aria-describedby="idTip"
+            />
+          </div>
+
+          <button id="startBtn" class="start-btn" type="button">
+            Start Network Test
+          </button>
+
+          <section id="diagnostic" class="diagnostic" aria-live="polite">
+            <div class="divider"></div>
+
+            <div id="progressArea">
+              <div class="progress-head">
+                <div class="progress-title">Test Progress</div>
+                <div id="progressValue" class="progress-value">0%</div>
+              </div>
+
+              <div class="progress-track">
+                <div id="progressBar" class="progress-bar"></div>
+              </div>
+            </div>
+
+            <div class="steps">
+              <div class="step" data-step="basic">
+                <div class="step-icon pending">·</div>
+                <div class="step-name">Basic Network</div>
+                <div class="step-detail"></div>
+              </div>
+
+              <div class="step" data-step="cloudflare">
+                <div class="step-icon pending">·</div>
+                <div class="step-name">Cloudflare</div>
+                <div class="step-detail"></div>
+              </div>
+
+              <div class="step" data-step="dns">
+                <div class="step-icon pending">·</div>
+                <div class="step-name">DNS</div>
+                <div class="step-detail"></div>
+              </div>
+
+              <div class="step" data-step="address1">
+                <div class="step-icon pending">·</div>
+                <div class="step-name">Address 1</div>
+                <div class="step-detail"></div>
+              </div>
+
+              <div class="step" data-step="address2">
+                <div class="step-icon pending">·</div>
+                <div class="step-name">Address 2</div>
+                <div class="step-detail"></div>
+              </div>
+
+              <div class="step" data-step="speed">
+                <div class="step-icon pending">·</div>
+                <div class="step-name">Network Speed</div>
+                <div class="step-detail"></div>
+              </div>
+            </div>
+
+            <div id="result" class="result">
+              <div id="resultState" class="result-state"></div>
+              <div id="resultDesc" class="result-desc"></div>
+
+              <div class="report-box">
+                <div class="report-label">Report ID</div>
+                <div id="reportId" class="report-id">-</div>
+                <div id="submitStatus" class="submit-status"></div>
+              </div>
+            </div>
+
+            <div id="cooldownText" class="cooldown"></div>
+          </section>
+        </div>
+      </section>
     </div>
-  `).join("");
-}
+  </main>
 
-function sanitizeForReport(data){
-  return {
-    version:"3.0-mobile-domain-diagnostics",
-    environment:{
-      time:data.environment.time,
-      timezone:data.environment.timezone,
-      browserOnline:data.environment.browserOnline,
-      networkType:data.environment.networkType,
-      effectiveType:data.environment.effectiveType,
-      estimatedRtt:data.environment.estimatedRtt,
-      estimatedDownlink:data.environment.estimatedDownlink
-    },
-    internet:{
-      success:data.internet.success,
-      total:data.internet.total
-    },
-    targets:data.targets.map(t=>({
-      code:t.code,
-      connection:{
-        success:t.stats.success,
-        total:t.stats.total,
-        averageMs:Number.isFinite(t.stats.avgMs)?Math.round(t.stats.avgMs):null,
-        attempts:t.attempts
-      },
-      dns:{
-        ipv4:{
-          result:dnsText(t.dns.ipv4),
-          dnssecValidated:t.dns.ipv4.dnssecValidated
-        },
-        ipv6:{
-          result:dnsText(t.dns.ipv6),
-          dnssecValidated:t.dns.ipv6.dnssecValidated
+  <script>
+    'use strict';
+
+    const WORKER_URL = 'https://sano-network-report.986zhaozilong.workers.dev';
+    const TEST_VERSION = '1.0.0';
+    const REQUEST_TIMEOUT = 8000;
+    const COOLDOWN_MS = 5 * 60 * 1000;
+    const LOCAL_PREVIEW = location.protocol === 'file:';
+
+    const USER_TARGETS = {
+      address1: 'https://api.sanolive.net/',
+      address2: 'https://api.fofunlive.net/',
+      github: location.origin + location.pathname,
+      google: 'https://www.google.com/generate_204',
+      googleConnectivity: 'https://connectivitycheck.gstatic.com/generate_204',
+      cloudflareWeb: 'https://www.cloudflare.com/cdn-cgi/trace'
+    };
+
+    const DNS_DOMAINS = [
+      'api.sanolive.net',
+      'api.fofunlive.net'
+    ];
+
+    const STEP_ORDER = [
+      'basic',
+      'cloudflare',
+      'dns',
+      'address1',
+      'address2',
+      'speed'
+    ];
+
+    const userIdInput = document.getElementById('userId');
+    const startBtn = document.getElementById('startBtn');
+    const diagnostic = document.getElementById('diagnostic');
+    const progressValue = document.getElementById('progressValue');
+    const progressArea = document.getElementById('progressArea');
+    const progressBar = document.getElementById('progressBar');
+    const result = document.getElementById('result');
+    const resultState = document.getElementById('resultState');
+    const resultDesc = document.getElementById('resultDesc');
+    const reportIdEl = document.getElementById('reportId');
+    const submitStatus = document.getElementById('submitStatus');
+    const cooldownText = document.getElementById('cooldownText');
+
+    let running = false;
+    let cooldownTimer = null;
+
+    function validateUserId(value) {
+      const userId = String(value || '').trim();
+      const numeric = /^\d+$/.test(userId);
+      const validLength = userId.length === 6 || userId.length === 8;
+
+      return {
+        userId,
+        numeric,
+        valid: numeric && validLength
+      };
+    }
+
+    userIdInput.addEventListener('input', () => {
+      const cleaned = userIdInput.value.replace(/\s+/g, '');
+      if (cleaned !== userIdInput.value) {
+        userIdInput.value = cleaned;
+      }
+      updateCooldownUI();
+    });
+
+    function createDiagnosticId() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let random = '';
+
+      if (window.crypto && crypto.getRandomValues) {
+        const bytes = new Uint8Array(5);
+        crypto.getRandomValues(bytes);
+
+        for (const byte of bytes) {
+          random += alphabet[byte % alphabet.length];
+        }
+      } else {
+        for (let i = 0; i < 5; i++) {
+          random += alphabet[Math.floor(Math.random() * alphabet.length)];
         }
       }
-    })),
-    diagnosis:data.diagnosis.map(x=>({
-      item:x.title,
-      status:x.level,
-      detail:x.detail
-    }))
-  };
-}
 
-async function run(){
-  startBtn.disabled=true;copyBtn.disabled=true;imageBtn.disabled=true;
-  diagnosisEl.innerHTML='<div class="muted">检测中…</div>';
-  domainResultsEl.innerHTML='<div class="muted">检测中…</div>';
-  reportEl.textContent="检测中…";
-  $("#canvasCard").hidden=true;
-
-  const env=networkInfo();
-  renderEnvironment(env);
-
-  const totalSteps=1+TARGETS.length*(SETTINGS.attempts+1);
-  let done=0;
-
-  setProgress(done,totalSteps,"正在检查当前手机外网…");
-  const internet=await checkInternetControls();
-  done++;
-  setProgress(done,totalSteps,`外网对照完成：${internet.success}/${internet.total} 可达`);
-
-  const targets=[];
-  for(const target of TARGETS){
-    statusEl.textContent=`正在检测 ${target.code}…`;
-    const t=await runTarget(target,(index)=>{
-      done++;
-      setProgress(done,totalSteps,`正在检测 ${target.code}：第 ${index}/${SETTINGS.attempts} 次连接`);
-    });
-    // DNS 作为该目标最后一步
-    done++;
-    setProgress(done,totalSteps,`正在分析 ${target.code} 的 DNS / IPv4 / IPv6`);
-    targets.push(t);
-    renderDomains(targets);
-  }
-
-  const diagnosis=buildDiagnosis(internet,targets);
-  const data={environment:env,internet,targets,diagnosis};
-  lastData=data;
-  renderDomains(targets);
-  renderDiagnosis(diagnosis);
-
-  const safe=sanitizeForReport(data);
-  lastReport=JSON.stringify(safe,null,2);
-  reportEl.textContent=lastReport;
-
-  setProgress(totalSteps,totalSteps,"检测完成");
-  startBtn.disabled=false;copyBtn.disabled=false;imageBtn.disabled=false;
-}
-
-async function copyReport(){
-  try{
-    await navigator.clipboard.writeText(lastReport);
-    statusEl.textContent="报告已复制";
-  }catch{
-    const t=document.createElement("textarea");
-    t.value=lastReport;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();
-    statusEl.textContent="报告已复制";
-  }
-}
-
-function wrap(ctx,text,x,y,maxWidth,lineHeight){
-  let line="",yy=y;
-  for(const ch of Array.from(String(text))){
-    const next=line+ch;
-    if(line&&ctx.measureText(next).width>maxWidth){
-      ctx.fillText(line,x,yy);line=ch;yy+=lineHeight;
-    }else line=next;
-  }
-  if(line){ctx.fillText(line,x,yy);yy+=lineHeight}
-  return yy;
-}
-
-function reportLines(){
-  const d=lastData,lines=[];
-  lines.push("网络与域名诊断报告");
-  lines.push(`时间：${d.environment.time}`);
-  lines.push(`网络：${d.environment.effectiveType}  浏览器在线=${d.environment.browserOnline?"是":"否"}`);
-  lines.push(`外网对照：${d.internet.success}/${d.internet.total} 可达`);
-  lines.push("");
-  lines.push("【重点排查】");
-  for(const x of d.diagnosis){
-    const s=x.level==="ok"?"正常":x.level==="bad"?"异常":x.level==="warn"?"可疑":"参考";
-    lines.push(`${x.title}：${s}`);
-    lines.push(`  ${x.detail}`);
-  }
-  lines.push("");
-  lines.push("【域名检测】");
-  for(const t of d.targets){
-    lines.push(`${t.code}`);
-    lines.push(`  连续成功：${t.stats.success}/${t.stats.total}`);
-    lines.push(`  平均耗时：${Number.isFinite(t.stats.avgMs)?Math.round(t.stats.avgMs)+"ms":"-"}`);
-    lines.push(`  IPv4：${dnsText(t.dns.ipv4)}`);
-    lines.push(`  IPv6：${dnsText(t.dns.ipv6)}`);
-    t.attempts.forEach((a,i)=>lines.push(`  第${i+1}次：${a.ok?a.durationMs+"ms":a.error==="TIMEOUT"?"超时":"失败"}`));
-  }
-  lines.push("");
-  lines.push("报告不包含真实域名和 IP。");
-  return lines;
-}
-
-function generateImage(){
-  if(!lastData)return;
-  const lines=reportLines();
-  const canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
-  const width=1080,pad=48,maxWidth=width-pad*2,lineHeight=38;
-  ctx.font='24px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif';
-
-  let estimated=0;
-  for(const l of lines) estimated+=Math.max(1,Math.ceil(ctx.measureText(l||" ").width/maxWidth));
-  canvas.width=width;
-  canvas.height=Math.max(900,pad*2+estimated*lineHeight+100);
-
-  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle="#172033";
-  let y=pad;
-
-  for(const l of lines){
-    if(l==="网络与域名诊断报告"){
-      ctx.font='bold 36px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif';
-      y=wrap(ctx,l,pad,y,maxWidth,50)+10;
-      ctx.font='24px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif';
-    }else{
-      y=wrap(ctx,l||" ",pad,y,maxWidth,lineHeight);
+      return `SN-${y}${m}${d}-${random}`;
     }
-  }
 
-  const holder=$("#canvasHolder");
-  holder.innerHTML="";
-  holder.appendChild(canvas);
-  $("#canvasCard").hidden=false;
-  $("#canvasCard").scrollIntoView({behavior:"smooth",block:"start"});
-}
+    function getCooldownKey(userId) {
+      return `sano_network_${userId}`;
+    }
 
-startBtn.addEventListener("click",run);
-copyBtn.addEventListener("click",copyReport);
-imageBtn.addEventListener("click",generateImage);
+    function getCooldownRemaining(userId) {
+      if (!userId) return 0;
 
-renderEnvironment(networkInfo());
-</script>
+      const last = Number(localStorage.getItem(getCooldownKey(userId)) || 0);
+      if (!last) return 0;
+
+      return Math.max(0, COOLDOWN_MS - (Date.now() - last));
+    }
+
+    function formatCountdown(ms) {
+      const total = Math.ceil(ms / 1000);
+      const min = Math.floor(total / 60);
+      const sec = total % 60;
+      return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    }
+
+    function updateCooldownUI() {
+      if (running) return;
+
+      const validation = validateUserId(userIdInput.value);
+
+      if (!validation.valid) {
+        cooldownText.textContent = '';
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Network Test';
+        return;
+      }
+
+      const remaining = getCooldownRemaining(validation.userId);
+
+      if (remaining > 0) {
+        startBtn.disabled = true;
+        startBtn.textContent = `Try again in ${formatCountdown(remaining)}`;
+        cooldownText.textContent = 'A full report can be submitted once every 5 minutes for the same ID.';
+      } else {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Network Test';
+        cooldownText.textContent = '';
+      }
+    }
+
+    setInterval(updateCooldownUI, 1000);
+
+    function resetSteps() {
+      for (const key of STEP_ORDER) {
+        setStep(key, 'pending', '');
+      }
+      setProgress(0);
+    }
+
+    function setStep(key, state, detail = '') {
+      const el = document.querySelector(`[data-step="${key}"]`);
+      if (!el) return;
+
+      const icon = el.querySelector('.step-icon');
+      const detailEl = el.querySelector('.step-detail');
+
+      el.classList.toggle('running', state === 'running');
+
+      icon.className = `step-icon ${state}`;
+
+      const icons = {
+        pending: '·',
+        running: '⟳',
+        success: '✓',
+        warning: '!',
+        error: '✕'
+      };
+
+      icon.textContent = icons[state] || '·';
+      detailEl.textContent = detail || '';
+    }
+
+    function setProgress(percent) {
+      const safe = Math.max(0, Math.min(100, Math.round(percent)));
+      progressValue.textContent = `${safe}%`;
+      progressBar.style.width = `${safe}%`;
+    }
+
+    function getBrowserNetwork() {
+      const connection =
+        navigator.connection ||
+        navigator.mozConnection ||
+        navigator.webkitConnection;
+
+      return {
+        online: navigator.onLine,
+        type: connection?.type ?? null,
+        effectiveType: connection?.effectiveType ?? null,
+        rtt: connection?.rtt ?? null,
+        downlink: connection?.downlink ?? null,
+        saveData: connection?.saveData ?? null
+      };
+    }
+
+    function getBrowserInfo() {
+      return {
+        userAgent: navigator.userAgent || null,
+        language: navigator.language || null,
+        platform: navigator.platform || null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null
+      };
+    }
+
+    function getPageTiming() {
+      const nav = performance.getEntriesByType('navigation')[0];
+
+      if (!nav) {
+        return {
+          dns: null,
+          tcp: null,
+          tls: null,
+          ttfb: null,
+          total: null
+        };
+      }
+
+      const dns = nav.domainLookupEnd > 0
+        ? Math.round(nav.domainLookupEnd - nav.domainLookupStart)
+        : null;
+
+      const tcp = nav.connectEnd > 0
+        ? Math.round(nav.connectEnd - nav.connectStart)
+        : null;
+
+      const tls = nav.secureConnectionStart > 0 && nav.connectEnd > 0
+        ? Math.round(nav.connectEnd - nav.secureConnectionStart)
+        : null;
+
+      const ttfb = nav.responseStart > 0
+        ? Math.round(nav.responseStart - nav.requestStart)
+        : null;
+
+      const total = nav.responseEnd > 0
+        ? Math.round(nav.responseEnd - nav.startTime)
+        : null;
+
+      return { dns, tcp, tls, ttfb, total };
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeout = REQUEST_TIMEOUT) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        return await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function testWorkerPing() {
+      const start = performance.now();
+
+      try {
+        const response = await fetchWithTimeout(
+          `${WORKER_URL}/ping?t=${Date.now()}`,
+          { cache: 'no-store' }
+        );
+
+        const data = await response.json();
+
+        return {
+          success: response.ok && data.success === true,
+          latency: Math.round(performance.now() - start),
+          status: response.status,
+          network: data.network || null
+        };
+      } catch (error) {
+        return {
+          success: false,
+          latency: Math.round(performance.now() - start),
+          status: null,
+          error: error?.name || 'Error',
+          message: error?.message || ''
+        };
+      }
+    }
+
+    async function getServerProbes() {
+      try {
+        const response = await fetchWithTimeout(
+          `${WORKER_URL}/server-probes?t=${Date.now()}`,
+          { cache: 'no-store' },
+          10000
+        );
+
+        if (!response.ok) return null;
+        return await response.json();
+      } catch {
+        return null;
+      }
+    }
+
+    async function testOpaqueConnectivity(url, timeout = REQUEST_TIMEOUT) {
+      const start = performance.now();
+
+      try {
+        await fetchWithTimeout(
+          `${url}${url.includes('?') ? '&' : '?'}diag=${Date.now()}`,
+          {
+            mode: 'no-cors',
+            cache: 'no-store',
+            redirect: 'follow'
+          },
+          timeout
+        );
+
+        return {
+          success: true,
+          reachable: true,
+          latency: Math.round(performance.now() - start),
+          method: 'browser-no-cors'
+        };
+      } catch (error) {
+        return {
+          success: false,
+          reachable: false,
+          latency: Math.round(performance.now() - start),
+          method: 'browser-no-cors',
+          error: error?.name || 'Error',
+          message: error?.message || ''
+        };
+      }
+    }
+
+    async function testSameOrigin(url, timeout = REQUEST_TIMEOUT) {
+      const start = performance.now();
+
+      try {
+        const response = await fetchWithTimeout(
+          `${url}${url.includes('?') ? '&' : '?'}diag=${Date.now()}`,
+          {
+            cache: 'no-store',
+            redirect: 'follow'
+          },
+          timeout
+        );
+
+        return {
+          success: response.ok,
+          reachable: true,
+          status: response.status,
+          latency: Math.round(performance.now() - start)
+        };
+      } catch (error) {
+        return {
+          success: false,
+          reachable: false,
+          status: null,
+          latency: Math.round(performance.now() - start),
+          error: error?.name || 'Error',
+          message: error?.message || ''
+        };
+      }
+    }
+
+    async function queryDns(resolver, domain, type) {
+      const endpoint = resolver === 'cloudflare'
+        ? `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`
+        : `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`;
+
+      const start = performance.now();
+
+      try {
+        const response = await fetchWithTimeout(
+          endpoint,
+          {
+            cache: 'no-store',
+            headers: {
+              Accept: resolver === 'cloudflare'
+                ? 'application/dns-json'
+                : 'application/json'
+            }
+          }
+        );
+
+        const data = await response.json();
+        const answers = Array.isArray(data.Answer)
+          ? data.Answer.map(item => item.data).filter(Boolean)
+          : [];
+
+        return {
+          success: response.ok && data.Status === 0,
+          resolver,
+          type,
+          dnsStatus: data.Status ?? null,
+          hasAnswer: answers.length > 0,
+          answers,
+          latency: Math.round(performance.now() - start)
+        };
+      } catch (error) {
+        return {
+          success: false,
+          resolver,
+          type,
+          dnsStatus: null,
+          hasAnswer: false,
+          answers: [],
+          latency: Math.round(performance.now() - start),
+          error: error?.name || 'Error',
+          message: error?.message || ''
+        };
+      }
+    }
+
+    async function testDns() {
+      const tasks = [];
+
+      for (const domain of DNS_DOMAINS) {
+        for (const resolver of ['cloudflare', 'google']) {
+          for (const type of ['A', 'AAAA']) {
+            tasks.push({ domain, resolver, type });
+          }
+        }
+      }
+
+      const values = await Promise.all(
+        tasks.map(task => queryDns(task.resolver, task.domain, task.type))
+      );
+
+      const result = {};
+
+      tasks.forEach((task, index) => {
+        result[task.domain] ||= {};
+        result[task.domain][task.resolver] ||= {};
+        result[task.domain][task.resolver][task.type] = values[index];
+      });
+
+      return result;
+    }
+
+    function analyzeDns(dns) {
+      const problems = [];
+
+      for (const domain of DNS_DOMAINS) {
+        const cfA = dns?.[domain]?.cloudflare?.A;
+        const googleA = dns?.[domain]?.google?.A;
+
+        if (!cfA?.success || !googleA?.success) {
+          problems.push(`${domain}: DNS 查询失败`);
+          continue;
+        }
+
+        if (!cfA?.hasAnswer || !googleA?.hasAnswer) {
+          problems.push(`${domain}: 缺少 IPv4 A 记录`);
+          continue;
+        }
+
+        const cfSet = new Set(cfA.answers || []);
+        const googleSet = new Set(googleA.answers || []);
+        const overlap = [...cfSet].some(ip => googleSet.has(ip));
+
+        if (!overlap) {
+          problems.push(`${domain}: DNS 结果不一致`);
+        }
+      }
+
+      return {
+        success: problems.length === 0,
+        problems
+      };
+    }
+
+    async function estimateDownloadSpeed() {
+      const start = performance.now();
+      const requests = [];
+      const count = 4;
+
+      for (let i = 0; i < count; i++) {
+        const url = `${location.pathname}?speed=${Date.now()}_${i}`;
+
+        requests.push(
+          fetchWithTimeout(
+            url,
+            { cache: 'no-store' },
+            10000
+          ).then(async response => {
+            const buffer = await response.arrayBuffer();
+            return buffer.byteLength;
+          })
+        );
+      }
+
+      try {
+        const sizes = await Promise.all(requests);
+        const durationMs = Math.max(1, performance.now() - start);
+        const bytes = sizes.reduce((sum, size) => sum + size, 0);
+        const downloadMbps = Number(
+          ((bytes * 8) / (durationMs / 1000) / 1000 / 1000).toFixed(2)
+        );
+
+        return {
+          success: true,
+          downloadMbps,
+          durationMs: Math.round(durationMs),
+          bytes,
+          source: 'GitHub Pages repeated download'
+        };
+      } catch (error) {
+        return {
+          success: false,
+          downloadMbps: null,
+          durationMs: Math.round(performance.now() - start),
+          bytes: 0,
+          source: 'GitHub Pages repeated download',
+          error: error?.name || 'Error',
+          message: error?.message || ''
+        };
+      }
+    }
+
+    function speedLabel(speed) {
+      if (!speed?.success || speed.downloadMbps == null) {
+        return 'Unavailable';
+      }
+
+      if (speed.downloadMbps >= 10) return `${speed.downloadMbps} Mbps`;
+      if (speed.downloadMbps >= 3) return `${speed.downloadMbps} Mbps`;
+      if (speed.downloadMbps >= 1) return `${speed.downloadMbps} Mbps`;
+      return `${speed.downloadMbps} Mbps`;
+    }
+
+    function buildSummary(data) {
+      const reportProblemsZh = [];
+      const uiProblemsEn = [];
+
+      if (!data.basic.online) {
+        reportProblemsZh.push('设备当前处于离线状态');
+        uiProblemsEn.push('Your device appears to be offline');
+      }
+
+      if (!data.cloudflare.success && !LOCAL_PREVIEW) {
+        reportProblemsZh.push('无法连接网络诊断节点');
+        uiProblemsEn.push('Unable to reach the network diagnostic node');
+      }
+
+      if (!data.dnsAnalysis.success) {
+        reportProblemsZh.push('DNS 解析异常');
+        uiProblemsEn.push('DNS resolution appears abnormal');
+      }
+
+      if (!data.address1.success) {
+        reportProblemsZh.push('地址 1 无法连接');
+        uiProblemsEn.push('Address 1 is unreachable');
+      }
+
+      if (!data.address2.success) {
+        reportProblemsZh.push('地址 2 无法连接');
+        uiProblemsEn.push('Address 2 is unreachable');
+      }
+
+      if (!data.speed.success) {
+        reportProblemsZh.push('网络测速失败');
+        uiProblemsEn.push('Network speed test failed');
+      }
+
+      const externalFailures = Object.entries(data.external || {})
+        .filter(([, value]) => !value?.success)
+        .map(([key]) => key);
+
+      let level = 'normal';
+      let mainProblem = '网络正常';
+      let description = '未检测到明显的网络连接异常。';
+
+      let uiTitle = 'Test Complete · Network Normal';
+      let uiDescription = 'No obvious network connectivity issues were detected.';
+
+      if (reportProblemsZh.length > 0) {
+        level = reportProblemsZh.length >= 2 ? 'error' : 'warning';
+        mainProblem = reportProblemsZh[0];
+        description = reportProblemsZh.join('；') + '。';
+
+        uiTitle = 'Test Complete · Network Issue Detected';
+        uiDescription = uiProblemsEn.join('; ') + '.';
+      } else if (externalFailures.length >= 2) {
+        level = 'warning';
+        mainProblem = '部分外部网络连接异常';
+        description = '部分外部网络连接检测失败，但核心服务当前可访问。';
+
+        uiTitle = 'Test Complete · Network Issue Detected';
+        uiDescription =
+          'Some external connectivity checks failed, but the core services are currently reachable.';
+      }
+
+      return {
+        level,
+        mainProblem,
+        description,
+        userFacingProblems: reportProblemsZh,
+        externalFailures,
+
+        // UI-only English fields. Worker/Issue can ignore them.
+        uiTitle,
+        uiDescription
+      };
+    }
+
+    async function submitReport(report) {
+      const response = await fetchWithTimeout(
+        `${WORKER_URL}/report`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(report)
+        },
+        15000
+      );
+
+      let result = {};
+
+      try {
+        result = await response.json();
+      } catch {}
+
+      if (!response.ok || result.success !== true) {
+        throw new Error(
+          result.message ||
+          result.githubMessage ||
+          `HTTP ${response.status}`
+        );
+      }
+
+      return result;
+    }
+
+    function showFinalResult(summary, diagnosticId) {
+      result.classList.add('show');
+      reportIdEl.textContent = diagnosticId;
+
+      resultState.className = 'result-state';
+
+      if (summary.level === 'normal') {
+        resultState.classList.add('normal');
+        resultState.innerHTML =
+          `<span>✓</span><span>${summary.uiTitle || 'Test Complete · Network Normal'}</span>`;
+      } else if (summary.level === 'warning') {
+        resultState.classList.add('warning');
+        resultState.innerHTML =
+          `<span>⚠</span><span>${summary.uiTitle || 'Test Complete · Network Issue Detected'}</span>`;
+      } else {
+        resultState.classList.add('error');
+        resultState.innerHTML =
+          `<span>⚠</span><span>${summary.uiTitle || 'Test Complete · Network Issue Detected'}</span>`;
+      }
+
+      resultDesc.textContent =
+        summary.uiDescription ||
+        'The diagnostic test has completed.';
+    }
+
+    async function runDiagnostic() {
+      if (running) return;
+
+      const validation = validateUserId(userIdInput.value);
+      if (validation.valid) {
+        const remaining = getCooldownRemaining(validation.userId);
+
+        if (remaining > 0) {
+          updateCooldownUI();
+          return;
+        }
+      }
+
+      running = true;
+      startBtn.disabled = true;
+      startBtn.textContent = 'Testing...';
+      userIdInput.disabled = true;
+      diagnostic.classList.add('show');
+      progressArea.style.display = '';
+      result.classList.remove('show');
+      submitStatus.className = 'submit-status';
+      submitStatus.textContent = '';
+      cooldownText.textContent = '';
+
+      resetSteps();
+
+      const diagnosticId = createDiagnosticId();
+      const reportTime = new Date().toISOString();
+
+      const reportData = {
+        basic: null,
+        cloudflare: null,
+        dns: null,
+        dnsAnalysis: null,
+        address1: null,
+        address2: null,
+        speed: null,
+        external: {},
+        serverProbes: null
+      };
+
+      try {
+        // 1. 基础网络
+        setStep('basic', 'running', 'Testing');
+        setProgress(8);
+
+        const browserNetwork = getBrowserNetwork();
+
+        reportData.basic = {
+          online: navigator.onLine,
+          browserNetwork
+        };
+
+        await new Promise(resolve => setTimeout(resolve, 180));
+
+        setStep(
+          'basic',
+          navigator.onLine ? 'success' : 'error',
+          navigator.onLine
+            ? (browserNetwork.effectiveType || 'Online')
+            : 'Offline'
+        );
+
+        setProgress(17);
+
+        // 2. Cloudflare
+        setStep('cloudflare', 'running', 'Testing');
+
+        const [workerPing, serverProbes] = await Promise.all([
+          testWorkerPing(),
+          getServerProbes()
+        ]);
+
+        reportData.cloudflare = workerPing;
+        reportData.serverProbes = serverProbes;
+
+        setStep(
+          'cloudflare',
+          workerPing.success ? 'success' : (LOCAL_PREVIEW ? 'warning' : 'error'),
+          workerPing.success
+            ? `${workerPing.latency} ms`
+            : (LOCAL_PREVIEW ? 'Local preview limited' : 'Connection failed')
+        );
+
+        setProgress(32);
+
+        // 3. DNS
+        setStep('dns', 'running', 'Testing');
+
+        const dns = await testDns();
+        const dnsAnalysis = analyzeDns(dns);
+
+        reportData.dns = dns;
+        reportData.dnsAnalysis = dnsAnalysis;
+
+        setStep(
+          'dns',
+          dnsAnalysis.success ? 'success' : 'error',
+          dnsAnalysis.success ? 'Resolved' : 'DNS issue'
+        );
+
+        setProgress(48);
+
+        // 4 + 5 + 后台外部连通性并行
+        setStep('address1', 'running', 'Testing');
+        setStep('address2', 'running', 'Testing');
+
+        const [
+          address1,
+          address2,
+          github,
+          google,
+          googleConnectivity,
+          cloudflareWeb
+        ] = await Promise.all([
+          testOpaqueConnectivity(USER_TARGETS.address1),
+          testOpaqueConnectivity(USER_TARGETS.address2),
+          testSameOrigin(USER_TARGETS.github),
+          testOpaqueConnectivity(USER_TARGETS.google),
+          testOpaqueConnectivity(USER_TARGETS.googleConnectivity),
+          testOpaqueConnectivity(USER_TARGETS.cloudflareWeb)
+        ]);
+
+        reportData.address1 = address1;
+        reportData.address2 = address2;
+
+        reportData.external = {
+          github,
+          google,
+          googleConnectivity,
+          cloudflareWeb
+        };
+
+        setStep(
+          'address1',
+          address1.success ? 'success' : 'error',
+          address1.success
+            ? `${address1.latency} ms`
+            : 'Connection failed'
+        );
+
+        setProgress(62);
+
+        setStep(
+          'address2',
+          address2.success ? 'success' : 'error',
+          address2.success
+            ? `${address2.latency} ms`
+            : 'Connection failed'
+        );
+
+        setProgress(74);
+
+        // 6. 测速
+        setStep('speed', 'running', 'Testing');
+
+        const speed = await estimateDownloadSpeed();
+        reportData.speed = speed;
+
+        setStep(
+          'speed',
+          speed.success ? 'success' : 'warning',
+          speedLabel(speed)
+        );
+
+        setProgress(92);
+
+        // 结论
+        const summary = buildSummary(reportData);
+        showFinalResult(summary, diagnosticId);
+
+        const payload = {
+          version: TEST_VERSION,
+          userId: validation.userId,
+          diagnosticId,
+          time: reportTime,
+
+          browser: getBrowserInfo(),
+
+          browserNetwork:
+            reportData.basic.browserNetwork,
+
+          pageTiming:
+            getPageTiming(),
+
+          tests: {
+            basic:
+              reportData.basic,
+
+            cloudflare:
+              reportData.cloudflare,
+
+            dns:
+              reportData.dns,
+
+            dnsAnalysis:
+              reportData.dnsAnalysis,
+
+            sano:
+              reportData.address1,
+
+            fofun:
+              reportData.address2,
+
+            external:
+              reportData.external,
+
+            serverProbeSnapshot:
+              reportData.serverProbes
+                ? {
+                    version:
+                      reportData.serverProbes.version || null,
+
+                    http:
+                      reportData.serverProbes.http || null
+                  }
+                : null
+          },
+
+          speed:
+            reportData.speed,
+
+          summary
+        };
+
+        // 只有 6 位 / 8 位纯数字 ID 才上传
+        if (validation.valid) {
+          if (LOCAL_PREVIEW) {
+            submitStatus.className = 'submit-status warn';
+            submitStatus.textContent =
+              '⚠ Local preview mode. Reports will be submitted automatically after deployment to GitHub Pages.';
+          } else {
+            submitStatus.className = 'submit-status';
+            submitStatus.textContent = '⟳ Submitting report automatically...';
+
+            try {
+              const submitResult = await submitReport(payload);
+
+              localStorage.setItem(
+                getCooldownKey(validation.userId),
+                String(Date.now())
+              );
+
+              submitStatus.className = 'submit-status ok';
+              submitStatus.textContent =
+                `✓ Report submitted automatically${submitResult.issueNumber ? ` · #${submitResult.issueNumber}` : ''}`;
+            } catch (error) {
+              submitStatus.className = 'submit-status error';
+              submitStatus.textContent =
+                `✕ Report submission failed: ${error?.message || 'Unknown error'}`;
+            }
+          }
+        } else {
+          submitStatus.className = 'submit-status warn';
+          submitStatus.textContent =
+            '⚠ Invalid ID format. The report was not submitted.';
+        }
+
+        setProgress(100);
+        setTimeout(() => {
+          progressArea.style.display = 'none';
+        }, 320);
+
+      } catch (error) {
+        console.error(error);
+
+        const summary = {
+          level: 'error',
+          mainProblem: '检测过程异常中断',
+          description: '检测过程中出现异常，请稍后重试。',
+          uiTitle: 'Test Complete · Diagnostic Interrupted',
+          uiDescription: 'An unexpected error occurred during the diagnostic test. Please try again later.'
+        };
+
+        showFinalResult(summary, diagnosticId);
+        submitStatus.className = 'submit-status error';
+        submitStatus.textContent = `✕ ${error?.message || 'Diagnostic error'}`;
+        setProgress(100);
+        setTimeout(() => {
+          progressArea.style.display = 'none';
+        }, 320);
+      } finally {
+        running = false;
+        userIdInput.disabled = false;
+        updateCooldownUI();
+
+        if (!startBtn.disabled) {
+          startBtn.textContent = 'Test Again';
+        }
+      }
+    }
+
+    startBtn.addEventListener('click', runDiagnostic);
+
+    userIdInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !startBtn.disabled) {
+        runDiagnostic();
+      }
+    });
+
+    updateCooldownUI();
+  </script>
 </body>
 </html>
