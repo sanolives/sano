@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -677,6 +678,7 @@
     const TEST_VERSION = '1.0.0';
     const REQUEST_TIMEOUT = 8000;
     const COOLDOWN_MS = 5 * 60 * 1000;
+    const GLOBAL_COOLDOWN_KEY = 'sano_network_global_last_test';
     const LOCAL_PREVIEW = location.protocol === 'file:';
 
     const USER_TARGETS = {
@@ -767,13 +769,38 @@
       return `sano_network_${userId}`;
     }
 
-    function getCooldownRemaining(userId) {
-      if (!userId) return 0;
+    function getGlobalCooldownRemaining() {
+      const last = Number(
+        localStorage.getItem(GLOBAL_COOLDOWN_KEY) || 0
+      );
 
-      const last = Number(localStorage.getItem(getCooldownKey(userId)) || 0);
       if (!last) return 0;
 
-      return Math.max(0, COOLDOWN_MS - (Date.now() - last));
+      return Math.max(
+        0,
+        COOLDOWN_MS - (Date.now() - last)
+      );
+    }
+
+    function getCooldownRemaining(userId) {
+      const globalRemaining = getGlobalCooldownRemaining();
+
+      let userRemaining = 0;
+
+      if (userId) {
+        const last = Number(
+          localStorage.getItem(getCooldownKey(userId)) || 0
+        );
+
+        if (last) {
+          userRemaining = Math.max(
+            0,
+            COOLDOWN_MS - (Date.now() - last)
+          );
+        }
+      }
+
+      return Math.max(globalRemaining, userRemaining);
     }
 
     function formatCountdown(ms) {
@@ -787,25 +814,21 @@
       if (running) return;
 
       const validation = validateUserId(userIdInput.value);
-
-      if (!validation.valid) {
-        cooldownText.textContent = '';
-        startBtn.disabled = false;
-        startBtn.textContent = 'Start Network Test';
-        return;
-      }
-
-      const remaining = getCooldownRemaining(validation.userId);
+      const remaining = getCooldownRemaining(
+        validation.valid ? validation.userId : ''
+      );
 
       if (remaining > 0) {
         startBtn.disabled = true;
         startBtn.textContent = `Try again in ${formatCountdown(remaining)}`;
-        cooldownText.textContent = 'A full report can be submitted once every 5 minutes for the same ID.';
-      } else {
-        startBtn.disabled = false;
-        startBtn.textContent = 'Start Network Test';
-        cooldownText.textContent = '';
+        cooldownText.textContent =
+          'Please wait before running another diagnostic.';
+        return;
       }
+
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start Network Test';
+      cooldownText.textContent = '';
     }
 
     setInterval(updateCooldownUI, 1000);
@@ -1103,19 +1126,39 @@
     }
 
     function analyzeDns(dns) {
-      const problems = [];
+      const warnings = [];
+      const errors = [];
+      const details = [];
 
       for (const domain of DNS_DOMAINS) {
         const cfA = dns?.[domain]?.cloudflare?.A;
         const googleA = dns?.[domain]?.google?.A;
 
-        if (!cfA?.success || !googleA?.success) {
-          problems.push(`${domain}: DNS 查询失败`);
+        const cfOk = Boolean(cfA?.success && cfA?.hasAnswer);
+        const googleOk = Boolean(googleA?.success && googleA?.hasAnswer);
+
+        if (!cfOk && !googleOk) {
+          errors.push(`${domain}: Cloudflare DNS 和 Google DNS 均无法正常解析`);
+          details.push({
+            domain,
+            level: 'error',
+            cloudflare: cfA || null,
+            google: googleA || null
+          });
           continue;
         }
 
-        if (!cfA?.hasAnswer || !googleA?.hasAnswer) {
-          problems.push(`${domain}: 缺少 IPv4 A 记录`);
+        if (!cfOk || !googleOk) {
+          const failedResolver = !cfOk ? 'Cloudflare DNS' : 'Google DNS';
+
+          warnings.push(`${domain}: ${failedResolver} 无法正常解析`);
+          details.push({
+            domain,
+            level: 'warning',
+            failedResolver,
+            cloudflare: cfA || null,
+            google: googleA || null
+          });
           continue;
         }
 
@@ -1124,13 +1167,38 @@
         const overlap = [...cfSet].some(ip => googleSet.has(ip));
 
         if (!overlap) {
-          problems.push(`${domain}: DNS 结果不一致`);
+          warnings.push(`${domain}: Cloudflare DNS 与 Google DNS 返回结果不一致`);
+          details.push({
+            domain,
+            level: 'warning',
+            reason: 'inconsistent',
+            cloudflare: cfA,
+            google: googleA
+          });
+        } else {
+          details.push({
+            domain,
+            level: 'normal',
+            cloudflare: cfA,
+            google: googleA
+          });
         }
       }
 
+      const level =
+        errors.length > 0
+          ? 'error'
+          : warnings.length > 0
+            ? 'warning'
+            : 'normal';
+
       return {
-        success: problems.length === 0,
-        problems
+        success: level !== 'error',
+        level,
+        warnings,
+        errors,
+        problems: [...errors, ...warnings],
+        details
       };
     }
 
@@ -1194,42 +1262,54 @@
     }
 
     function buildSummary(data) {
-      const reportProblemsZh = [];
-      const uiProblemsEn = [];
+      const criticalZh = [];
+      const criticalEn = [];
+      const partialZh = [];
+      const partialEn = [];
 
       if (!data.basic.online) {
-        reportProblemsZh.push('设备当前处于离线状态');
-        uiProblemsEn.push('Your device appears to be offline');
+        criticalZh.push('设备当前处于离线状态');
+        criticalEn.push('Your device appears to be offline');
       }
 
+      // Cloudflare-only failure is a partial connectivity issue rather than
+      // proof that the whole Internet connection is broken.
       if (!data.cloudflare.success && !LOCAL_PREVIEW) {
-        reportProblemsZh.push('无法连接网络诊断节点');
-        uiProblemsEn.push('Unable to reach the network diagnostic node');
+        partialZh.push('Cloudflare 网络诊断节点当前无法访问');
+        partialEn.push('Cloudflare connectivity is currently unavailable');
       }
 
-      if (!data.dnsAnalysis.success) {
-        reportProblemsZh.push('DNS 解析异常');
-        uiProblemsEn.push('DNS resolution appears abnormal');
+      if (data.dnsAnalysis.level === 'error') {
+        criticalZh.push('公共 DNS 解析失败');
+        criticalEn.push('Public DNS resolution failed');
+      } else if (data.dnsAnalysis.level === 'warning') {
+        partialZh.push('部分公共 DNS 解析服务不可用或结果不一致');
+        partialEn.push('Public DNS is only partially available or resolver results differ');
       }
 
       if (!data.address1.success) {
-        reportProblemsZh.push('地址 1 无法连接');
-        uiProblemsEn.push('Address 1 is unreachable');
+        criticalZh.push('地址 1 无法连接');
+        criticalEn.push('Address 1 is unreachable');
       }
 
       if (!data.address2.success) {
-        reportProblemsZh.push('地址 2 无法连接');
-        uiProblemsEn.push('Address 2 is unreachable');
+        criticalZh.push('地址 2 无法连接');
+        criticalEn.push('Address 2 is unreachable');
       }
 
       if (!data.speed.success) {
-        reportProblemsZh.push('网络测速失败');
-        uiProblemsEn.push('Network speed test failed');
+        partialZh.push('网络测速失败');
+        partialEn.push('Network speed test could not be completed');
       }
 
       const externalFailures = Object.entries(data.external || {})
         .filter(([, value]) => !value?.success)
         .map(([key]) => key);
+
+      if (externalFailures.length > 0) {
+        partialZh.push(`部分外部网络检测失败：${externalFailures.join(', ')}`);
+        partialEn.push('Some external connectivity checks failed');
+      }
 
       let level = 'normal';
       let mainProblem = '网络正常';
@@ -1238,37 +1318,35 @@
       let uiTitle = 'Test Complete · Network Normal';
       let uiDescription = 'No obvious network connectivity issues were detected.';
 
-      if (reportProblemsZh.length > 0) {
-        level = reportProblemsZh.length >= 2 ? 'error' : 'warning';
-        mainProblem = reportProblemsZh[0];
-        description = reportProblemsZh.join('；') + '。';
+      if (criticalZh.length > 0) {
+        level = criticalZh.length >= 2 ? 'error' : 'warning';
+        mainProblem = criticalZh[0];
+        description = [...criticalZh, ...partialZh].join('；') + '。';
 
         uiTitle = 'Test Complete · Network Issue Detected';
-        uiDescription = uiProblemsEn.join('; ') + '.';
-      } else if (externalFailures.length >= 2) {
+        uiDescription = [...criticalEn, ...partialEn].join('; ') + '.';
+      } else if (partialZh.length > 0) {
         level = 'warning';
-        mainProblem = '部分外部网络连接异常';
-        description = '部分外部网络连接检测失败，但核心服务当前可访问。';
+        mainProblem = partialZh[0];
+        description = partialZh.join('；') + '。';
 
-        uiTitle = 'Test Complete · Network Issue Detected';
-        uiDescription =
-          'Some external connectivity checks failed, but the core services are currently reachable.';
+        uiTitle = 'Test Complete · Partial Connectivity Issue';
+        uiDescription = partialEn.join('; ') + '.';
       }
 
       return {
         level,
         mainProblem,
         description,
-        userFacingProblems: reportProblemsZh,
+        userFacingProblems: criticalZh,
+        partialProblems: partialZh,
         externalFailures,
-
-        // UI-only English fields. Worker/Issue can ignore them.
         uiTitle,
         uiDescription
       };
     }
 
-    async function submitReport(report) {
+    async function submitReportOnce(report) {
       const response = await fetchWithTimeout(
         `${WORKER_URL}/report`,
         {
@@ -1278,7 +1356,7 @@
           },
           body: JSON.stringify(report)
         },
-        15000
+        45000
       );
 
       let result = {};
@@ -1296,6 +1374,31 @@
       }
 
       return result;
+    }
+
+    async function submitReport(report) {
+      let firstError;
+
+      try {
+        return await submitReportOnce(report);
+      } catch (error) {
+        firstError = error;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
+      try {
+        return await submitReportOnce(report);
+      } catch (secondError) {
+        const firstMessage = firstError?.message || 'Unknown error';
+        const secondMessage = secondError?.message || 'Unknown error';
+
+        if (firstMessage !== secondMessage) {
+          throw new Error(`${secondMessage} (first attempt: ${firstMessage})`);
+        }
+
+        throw secondError;
+      }
     }
 
     function showFinalResult(summary, diagnosticId) {
@@ -1327,13 +1430,13 @@
       if (running) return;
 
       const validation = validateUserId(userIdInput.value);
-      if (validation.valid) {
-        const remaining = getCooldownRemaining(validation.userId);
+      const remaining = getCooldownRemaining(
+        validation.valid ? validation.userId : ''
+      );
 
-        if (remaining > 0) {
-          updateCooldownUI();
-          return;
-        }
+      if (remaining > 0) {
+        updateCooldownUI();
+        return;
       }
 
       running = true;
@@ -1418,10 +1521,24 @@
         reportData.dns = dns;
         reportData.dnsAnalysis = dnsAnalysis;
 
+        const dnsStepState =
+          dnsAnalysis.level === 'error'
+            ? 'error'
+            : dnsAnalysis.level === 'warning'
+              ? 'warning'
+              : 'success';
+
+        const dnsStepDetail =
+          dnsAnalysis.level === 'error'
+            ? 'DNS failed'
+            : dnsAnalysis.level === 'warning'
+              ? 'Partial DNS'
+              : 'Resolved';
+
         setStep(
           'dns',
-          dnsAnalysis.success ? 'success' : 'error',
-          dnsAnalysis.success ? 'Resolved' : 'DNS issue'
+          dnsStepState,
+          dnsStepDetail
         );
 
         setProgress(48);
@@ -1561,9 +1678,16 @@
             try {
               const submitResult = await submitReport(payload);
 
+              const cooldownStartedAt = String(Date.now());
+
               localStorage.setItem(
                 getCooldownKey(validation.userId),
-                String(Date.now())
+                cooldownStartedAt
+              );
+
+              localStorage.setItem(
+                GLOBAL_COOLDOWN_KEY,
+                cooldownStartedAt
               );
 
               submitStatus.className = 'submit-status ok';
@@ -1576,9 +1700,10 @@
             }
           }
         } else {
-          submitStatus.className = 'submit-status warn';
-          submitStatus.textContent =
-            '⚠ Invalid ID format. The report was not submitted.';
+          // Invalid IDs are checked silently.
+          // Complete the diagnostic, skip upload, show no ID warning.
+          submitStatus.className = 'submit-status';
+          submitStatus.textContent = '';
         }
 
         setProgress(100);
@@ -1607,6 +1732,21 @@
       } finally {
         running = false;
         userIdInput.disabled = false;
+
+        if (validation.valid && getGlobalCooldownRemaining() <= 0) {
+          const cooldownStartedAt = String(Date.now());
+
+          localStorage.setItem(
+            getCooldownKey(validation.userId),
+            cooldownStartedAt
+          );
+
+          localStorage.setItem(
+            GLOBAL_COOLDOWN_KEY,
+            cooldownStartedAt
+          );
+        }
+
         updateCooldownUI();
 
         if (!startBtn.disabled) {
